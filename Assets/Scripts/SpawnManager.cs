@@ -21,8 +21,21 @@ public class SpawnManager : NetworkBehaviour
     public override void OnNetworkSpawn()
     {
         // assign your camewa
+        if (IsOwner) InitializePlayerCamera(transform);
 
         // move player to spawn
-        if (IsOwner) InitializePlayerCamera(transform);
+
+        // subscribe to player count callbacks
+
+    }
+
+    void IncreasePlayerCount()
+    {
+        
+    }
+
+    void DecreasePlayerCount()
+    {
+        
     }
 }
