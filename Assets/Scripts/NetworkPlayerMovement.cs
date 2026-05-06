@@ -17,22 +17,24 @@ public class NetworkPlayerMovement : NetworkBehaviour
     {
         if (!IsOwner) return;
 
-        Vector2 input = new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical"));
-        if (IsServer) MovePlayer(input);
-        else MovePlayerRPC(input);
+        Vector2 input = new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical")).normalized;
+        if (IsServer) MovePlayer(input, playerCamera.forward, playerCamera.right);
+        else MovePlayerRPC(input, playerCamera.forward, playerCamera.right);
     }
 
-    void MovePlayer(Vector2 dir)
+    void MovePlayer(Vector2 dir, Vector3 cameraForward, Vector3 cameraSide)
     {
-        //if (!playerCamera) return;
+        // flatten camera dirs
+        cameraForward.y = 0;
+        cameraSide.y = 0;
 
-        rb.AddForce(transform.right * dir.x * moveSpeed * Time.deltaTime);
-        rb.AddForce(transform.forward * dir.y * moveSpeed * Time.deltaTime);
+        rb.AddForce(cameraSide * dir.x * moveSpeed * Time.deltaTime);
+        rb.AddForce(cameraForward * dir.y * moveSpeed * Time.deltaTime);
     }
 
     [Rpc(SendTo.Server)] // runs this code server side
-    void MovePlayerRPC(Vector2 dir)
+    void MovePlayerRPC(Vector2 dir, Vector3 cameraForward, Vector3 cameraSide)
     {
-        MovePlayer(dir);
+        MovePlayer(dir, cameraForward, cameraSide);
     }
 }
