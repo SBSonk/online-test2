@@ -2,13 +2,13 @@ using TMPro;
 using Unity.Netcode;
 using UnityEngine;
 
-public class ServerUIDisplay : NetworkBehaviour
+public class ServerUIDisplay : MonoBehaviour
 {
     public TextMeshProUGUI playerCountText, pingText;
 
     void Update()
     {
-        playerCountText.gameObject.SetActive(IsServer);
+        playerCountText.gameObject.SetActive(NetworkManager.Singleton.IsServer);
         if (NetworkManager.Singleton.IsServer) 
         {
             playerCountText.text = $"Players: {NetworkManager.Singleton.ConnectedClients.Count}";
