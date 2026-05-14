@@ -2427,6 +2427,7 @@ GameObject:
   - component: {fileID: 1577391101}
   - component: {fileID: 1577391099}
   - component: {fileID: 1577391100}
+  - component: {fileID: 1577391102}
   m_Layer: 0
   m_Name: MultiplayerMenu
   m_TagString: Untagged
@@ -2492,6 +2493,26 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1577391102
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1577391098}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ce74af7c0261af44787147efd74fcd43, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ServerUIDisplay
+  ShowTopMostFoldoutHeaderGroup: 1
+  playerCount:
+    UpdateTraits:
+      MinSecondsBetweenUpdates: 0
+      MaxSecondsBetweenUpdates: 0
+    m_InternalValue: 0
+  playerCountText: {fileID: 290252686}
+  pingText: {fileID: 315187794}
 --- !u!1 &1679138816
 GameObject:
   m_ObjectHideFlags: 0
@@ -2502,7 +2523,6 @@ GameObject:
   m_Component:
   - component: {fileID: 1679138817}
   - component: {fileID: 1679138818}
-  - component: {fileID: 1679138819}
   m_Layer: 5
   m_Name: SERVERUI
   m_TagString: Untagged
@@ -2557,20 +2577,6 @@ MonoBehaviour:
   m_ChildScaleWidth: 0
   m_ChildScaleHeight: 0
   m_ReverseArrangement: 0
---- !u!114 &1679138819
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1679138816}
-  m_Enabled: 0
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: ce74af7c0261af44787147efd74fcd43, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::ServerUIDisplay
-  playerCountText: {fileID: 290252686}
-  pingText: {fileID: 315187794}
 --- !u!1 &1761988436
 GameObject:
   m_ObjectHideFlags: 0
