@@ -24,18 +24,8 @@ public class SpawnManager : NetworkBehaviour
         if (IsOwner) InitializePlayerCamera(transform);
 
         // move player to spawn
+        GameObject[] spawnPoints = GameObject.FindGameObjectsWithTag("SpawnPoint");
 
-        // subscribe to player count callbacks
-
-    }
-
-    void IncreasePlayerCount()
-    {
-        
-    }
-
-    void DecreasePlayerCount()
-    {
-        
+        transform.position = spawnPoints[Random.Range(0, spawnPoints.Length)].transform.position;
     }
 }
