@@ -8,14 +8,14 @@ public class SpawnManager : NetworkBehaviour
 
     void InitializePlayerCamera(Transform player)
     {
-        CinemachineCamera newCam = Instantiate(tpsCameraPrefab);
-        newCam.enabled = false;
+        CinemachineCamera playerCam = GameObject.FindGameObjectWithTag("PlayerCamera").GetComponent<CinemachineCamera>();
+        playerCam.enabled = false;
 
-        newCam.Target.TrackingTarget = player;
-        newCam.enabled = true;
+        playerCam.Target.TrackingTarget = player;
+        playerCam.enabled = true;
 
         // assign reference to movement
-        GetComponent<NetworkPlayerMovement>().playerCamera = newCam.transform;
+        GetComponent<NetworkPlayerMovement>().playerCamera = playerCam.transform;
     }
 
     public override void OnNetworkSpawn()
