@@ -8,12 +8,19 @@ public class NetworkHasHealth : NetworkBehaviour
     public NetworkVariable<int> maxHealth = new NetworkVariable<int>(100);
 
     public UnityEvent<int> onHealthChange;
+    public UnityEvent onDeath;
+
+    [Header("Visuals")]
+    public DamagePopup damagePopupPrefab;
+    public Transform popupSpawnPoint;
 
     public override void OnNetworkSpawn()
     {
         base.OnNetworkSpawn();
 
         health.OnValueChanged += HandleHealthChange;
+
+        if (IsServer) InitializeSpawn();
     }
 
     public override void OnNetworkDespawn()
@@ -30,15 +37,33 @@ public class NetworkHasHealth : NetworkBehaviour
 
     protected virtual void HandleDeath()
     {
-        NetworkObject.Despawn();
+        onDeath?.Invoke();
     }
 
-    [ServerRpc()]
-    public void TakeDamageServerRpc(int amount)
+    public void TakeDamage(int amount)
     {
+        if (!IsServer) return; 
+
         health.Value -= amount;
+
+        ShowDamagePopupClientRpc(amount);
 
         if (health.Value <= 0) HandleDeath();
     }
+
+    [ClientRpc]
+    private void ShowDamagePopupClientRpc(int damageAmount)
+    {
+        if (damagePopupPrefab == null) return; 
+
+        Vector3 spawnPos = popupSpawnPoint != null ? popupSpawnPoint.position : transform.position;
+
+        DamagePopup popup = Instantiate(damagePopupPrefab, spawnPos, Quaternion.identity);
+        popup.Initialize(damageAmount);
+    }
+
+    public void InitializeSpawn()
+    {
+        health.Value = maxHealth.Value;
+    }
 }
- 

@@ -13,8 +13,11 @@ public class MultiplayerMenu : NetworkBehaviour
     [Header("UI References")]
     [SerializeField] private GameObject menuUI;
     [SerializeField] private TMP_InputField joinCodeInput;
-    [SerializeField] private TMP_Text joinCodeText;
+    [SerializeField] private TMP_Text joinCodeText; 
     [SerializeField] private TMP_Text statusText;
+    
+    [Tooltip("Assign a Text element on your permanent gameplay HUD here")]
+    [SerializeField] private TMP_Text inGameJoinCodeText; 
 
     [Header("Relay Settings")]
     [SerializeField] private int maxConnections = 4;
@@ -58,25 +61,20 @@ public class MultiplayerMenu : NetworkBehaviour
             await InitializeUnityServices();
 
             Allocation allocation = await RelayService.Instance.CreateAllocationAsync(maxConnections);
-
             string joinCode = await RelayService.Instance.GetJoinCodeAsync(allocation.AllocationId);
 
             UnityTransport transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
-
             transport.UseWebSockets = true;
-
-            transport.SetRelayServerData(
-                AllocationUtils.ToRelayServerData(allocation, WebGLConnectionType)
-            );
+            transport.SetRelayServerData(AllocationUtils.ToRelayServerData(allocation, WebGLConnectionType));
 
             bool started = NetworkManager.Singleton.StartHost();
 
             if (started)
             {
-                if (joinCodeText != null)
-                {
-                    joinCodeText.text = "Join Code: " + joinCode;
-                }
+                if (joinCodeText != null) joinCodeText.text = "Join Code: " + joinCode;
+                
+                // Update the permanent HUD for the host
+                if (inGameJoinCodeText != null) inGameJoinCodeText.text = "Room Code: " + joinCode; 
 
                 SetStatus("Host started. Join Code: " + joinCode);
                 HideMenu();
@@ -118,17 +116,16 @@ public class MultiplayerMenu : NetworkBehaviour
             JoinAllocation joinAllocation = await RelayService.Instance.JoinAllocationAsync(joinCode);
 
             UnityTransport transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
-
             transport.UseWebSockets = true;
-
-            transport.SetRelayServerData(
-                AllocationUtils.ToRelayServerData(joinAllocation, WebGLConnectionType)
-            );
+            transport.SetRelayServerData(AllocationUtils.ToRelayServerData(joinAllocation, WebGLConnectionType));
 
             bool started = NetworkManager.Singleton.StartClient();
 
             if (started)
             {
+                // Update the permanent HUD for the client using what they typed
+                if (inGameJoinCodeText != null) inGameJoinCodeText.text = "Room Code: " + joinCode;
+
                 SetStatus("Client started.");
                 HideMenu();
             }

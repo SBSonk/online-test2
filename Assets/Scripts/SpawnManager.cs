@@ -4,8 +4,6 @@ using UnityEngine;
 
 public class SpawnManager : NetworkBehaviour
 {
-    public CinemachineCamera tpsCameraPrefab;
-
     void InitializePlayerCamera(Transform player)
     {
         CinemachineCamera playerCam = GameObject.FindGameObjectWithTag("PlayerCamera").GetComponent<CinemachineCamera>();
@@ -16,16 +14,34 @@ public class SpawnManager : NetworkBehaviour
 
         // assign reference to movement
         GetComponent<NetworkPlayerMovement>().playerCamera = playerCam.transform;
+        GetComponent<NetworkPlayerShooting>().cameraTransform = playerCam.transform;
+    }
+
+    void InitializeHUD()
+    {
+        FindAnyObjectByType<HUDManager>().Initialize(GetComponent<NetworkHasHealth>(), GetComponent<NetworkPlayerShooting>());
     }
 
     public override void OnNetworkSpawn()
     {
         // assign your camewa
-        if (IsOwner) InitializePlayerCamera(transform);
+        if (IsOwner)
+        {
+            InitializeHUD();
+            InitializePlayerCamera(transform);
+        }
 
+        SpawnPlayer();
+    }
+
+    public void SpawnPlayer()
+    {
         // move player to spawn
         GameObject[] spawnPoints = GameObject.FindGameObjectsWithTag("SpawnPoint");
 
         transform.position = spawnPoints[Random.Range(0, spawnPoints.Length)].transform.position;
+
+        // Initialize health
+        GetComponent<NetworkHasHealth>().InitializeSpawn();
     }
 }

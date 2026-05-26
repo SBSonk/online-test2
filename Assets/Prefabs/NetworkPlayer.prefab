@@ -1,5 +1,36 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
+--- !u!1 &2759879762752599029
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 6458648774349206391}
+  m_Layer: 6
+  m_Name: Feet
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &6458648774349206391
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2759879762752599029}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: -1, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 2512298946415933902}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &6628507149264979473
 GameObject:
   m_ObjectHideFlags: 0
@@ -19,8 +50,9 @@ GameObject:
   - component: {fileID: 9016928227875231833}
   - component: {fileID: -7546428482564506342}
   - component: {fileID: 211856287403497843}
-  - component: {fileID: 3377617704590895421}
-  m_Layer: 0
+  - component: {fileID: -825304004673381689}
+  - component: {fileID: 5347997764458865316}
+  m_Layer: 6
   m_Name: NetworkPlayer
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -39,7 +71,8 @@ Transform:
   m_LocalPosition: {x: 0.35356, y: 0.24749, z: 0.35356}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
-  m_Children: []
+  m_Children:
+  - {fileID: 6458648774349206391}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!33 &899578746619813514
@@ -161,7 +194,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Unity.Netcode.Runtime::Unity.Netcode.NetworkObject
-  GlobalObjectIdHash: 2883407401
+  GlobalObjectIdHash: 1008526252
   InScenePlacedSourceGlobalObjectIdHash: 0
   DeferredDespawnTick: 0
   Ownership: 1
@@ -251,7 +284,13 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::NetworkPlayerMovement
   ShowTopMostFoldoutHeaderGroup: 1
   playerCamera: {fileID: 0}
-  moveSpeed: 2000
+  moveSpeed: 4
+  jumpForce: 5
+  groundCheck: {fileID: 6458648774349206391}
+  groundLayer:
+    serializedVersion: 2
+    m_Bits: 512
+  groundDistance: 0.2
 --- !u!114 &-7546428482564506342
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -265,7 +304,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SpawnManager
   ShowTopMostFoldoutHeaderGroup: 1
-  tpsCameraPrefab: {fileID: 8900930567878113503, guid: 8394753c97dd10848849717bf68caf6f, type: 3}
 --- !u!114 &211856287403497843
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -285,7 +323,7 @@ MonoBehaviour:
   - {fileID: 2100000, guid: 8af9dab411b78d24c9daa57199ce5439, type: 2}
   - {fileID: 2100000, guid: 723bac99b55763b4d8f1cb692fe422ac, type: 2}
   - {fileID: 2100000, guid: 408cbb4748b30aa4e8784f0a0ab24e89, type: 2}
---- !u!114 &3377617704590895421
+--- !u!114 &-825304004673381689
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -294,7 +332,51 @@ MonoBehaviour:
   m_GameObject: {fileID: 6628507149264979473}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 5cdc63918adfe5f48ab002eb27a3eba9, type: 3}
+  m_Script: {fileID: 11500000, guid: 416517e99fb36fc428f757498ae119eb, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::NetworkHasHealth
+  m_EditorClassIdentifier: '::'
   ShowTopMostFoldoutHeaderGroup: 1
+  cameraTransform: {fileID: 0}
+  equippedWeapon:
+    weaponName: Ray Gun
+    equipSprite: {fileID: -1957391823, guid: 38d7fd4cb991b7e41870b72b19fb3b34, type: 3}
+    damage: 25
+    firerate: 0.3
+    range: 50
+  shootableLayer:
+    serializedVersion: 2
+    m_Bits: 704
+  OnShootHit:
+    m_PersistentCalls:
+      m_Calls: []
+--- !u!114 &5347997764458865316
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6628507149264979473}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c86ec6b8c8d357846a40e72380d1589b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: '::'
+  ShowTopMostFoldoutHeaderGroup: 1
+  health:
+    UpdateTraits:
+      MinSecondsBetweenUpdates: 0
+      MaxSecondsBetweenUpdates: 0
+    m_InternalValue: 100
+  maxHealth:
+    UpdateTraits:
+      MinSecondsBetweenUpdates: 0
+      MaxSecondsBetweenUpdates: 0
+    m_InternalValue: 100
+  onHealthChange:
+    m_PersistentCalls:
+      m_Calls: []
+  onDeath:
+    m_PersistentCalls:
+      m_Calls: []
+  damagePopupPrefab: {fileID: 2143015114065681700, guid: cf74eafd59fe82141b76983f3c399ba1, type: 3}
+  popupSpawnPoint: {fileID: 2512298946415933902}
