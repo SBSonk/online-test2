@@ -14,6 +14,8 @@ public class NetworkHasHealth : NetworkBehaviour
     public DamagePopup damagePopupPrefab;
     public Transform popupSpawnPoint;
 
+    public ulong lastAttackerId;
+
     public override void OnNetworkSpawn()
     {
         base.OnNetworkSpawn();
@@ -40,15 +42,20 @@ public class NetworkHasHealth : NetworkBehaviour
         onDeath?.Invoke();
     }
 
-    public void TakeDamage(int amount)
+    public void TakeDamage(int damage, ulong attackerId) 
     {
-        if (!IsServer) return; 
+        if (!IsServer) return;
+        
+        lastAttackerId = attackerId; // Remember who hit us!
+        health.Value -= damage;
+        
+        // Trigger the visual damage numbers on all clients
+        ShowDamagePopupClientRpc(damage);
 
-        health.Value -= amount;
-
-        ShowDamagePopupClientRpc(amount);
-
-        if (health.Value <= 0) HandleDeath();
+        if (health.Value <= 0)
+        {
+            HandleDeath(); // FIXED: Changed from Die() to your HandleDeath()
+        }
     }
 
     [ClientRpc]
