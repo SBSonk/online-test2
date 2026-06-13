@@ -16,18 +16,28 @@ public class NetworkPlayerMovement : NetworkBehaviour
     public float rideSpringDamper = 20f;
     public LayerMask groundLayer;
 
-    [Header("Audio")]
+    [Header("Audio & Animation")]
     public FootstepManager footstepManager;
+    public NetworkHandsAnimator handAnimator; 
+
+    // --- NEW: Camera Shake Reference ---
+    [Header("Camera Effects")]
+    public ProceduralCameraShaker cameraShaker; 
+
+    // --- NEW: Stun & Knockback Variables ---
+    [Header("Stun Settings")]
+    public float stunDuration = 3f;
+    public NetworkBalloonShooter balloonShooter;
+    public PlayerInteract playerInteract;
+    private bool isStunned = false; 
 
     private Rigidbody rb;
     
-    // Client-side local variables
     private Vector2 currentInput;
     private bool jumpRequested;
     private Vector3 camForward;
     private Vector3 camRight;
 
-    // Server-side tracking variables
     private Vector2 serverInput;
     private Vector3 serverCamForward;
     private Vector3 serverCamRight;
@@ -40,33 +50,100 @@ public class NetworkPlayerMovement : NetworkBehaviour
         rb.constraints = RigidbodyConstraints.FreezeRotation; 
     }
 
+    // ==========================================
+    // STUN & KNOCKBACK LOGIC
+    // ==========================================
+
+    public void TakeBalloonHit(Vector3 force, Color splatColor)
+    {
+        if (!IsServer) return;
+
+        isStunned = true;
+        
+        rb.constraints = RigidbodyConstraints.None;
+        rb.AddForce(force, ForceMode.Impulse);
+        rb.AddTorque(Random.insideUnitSphere * force.magnitude, ForceMode.Impulse);
+
+        ApplyStunEffectsRpc(splatColor, RpcTarget.Single(OwnerClientId, RpcTargetUse.Temp));
+
+        Invoke(nameof(RecoverFromStun), stunDuration);
+    }
+
+    [Rpc(SendTo.SpecifiedInParams)]
+    private void ApplyStunEffectsRpc(Color splatColor, RpcParams rpcParams = default)
+    {
+        if (balloonShooter != null) balloonShooter.enabled = false;
+        if (playerInteract != null) playerInteract.enabled = false;
+
+        BalloonSplatUI splatUI = FindAnyObjectByType<BalloonSplatUI>();
+        if (splatUI != null) splatUI.ShowSplat(splatColor);
+
+        // --- NEW: Apply massive explosion shake ---
+        if (cameraShaker != null) cameraShaker.AddTrauma(0.85f);
+    }
+
+    private void RecoverFromStun()
+    {
+        if (!IsServer) return;
+        isStunned = false;
+
+        transform.rotation = Quaternion.Euler(0, transform.eulerAngles.y, 0);
+        rb.angularVelocity = Vector3.zero;
+        rb.constraints = RigidbodyConstraints.FreezeRotation;
+
+        RecoverLocalInputsRpc(RpcTarget.Single(OwnerClientId, RpcTargetUse.Temp));
+    }
+
+    [Rpc(SendTo.SpecifiedInParams)]
+    private void RecoverLocalInputsRpc(RpcParams rpcParams = default)
+    {
+        if (balloonShooter != null) balloonShooter.enabled = true;
+        if (playerInteract != null) playerInteract.enabled = true;
+    }
+
+    // ==========================================
+    // NORMAL MOVEMENT LOOP
+    // ==========================================
+
     void Update()
     {
-        // 1. Handle Audio Locally (Runs for all clients so you hear others)
-        if (footstepManager != null)
+        bool isMoving = false;
+        bool isGroundedAudio = false;
+
+        if (footstepManager != null || cameraShaker != null)
         {
-            // Calculate horizontal speed
             Vector3 horizontalVelocity = new Vector3(rb.linearVelocity.x, 0, rb.linearVelocity.z);
-            bool isMoving = horizontalVelocity.magnitude > 0.5f; // Threshold to prevent sliding audio when standing still
-
-            // Simple local raycast to see if the player is currently hovering over the ground
-            bool isGroundedAudio = Physics.Raycast(transform.position, Vector3.down, raycastLength, groundLayer);
-
-            // Enable footsteps only if moving and grounded
-            footstepManager.SetFootsteps(isMoving && isGroundedAudio);
+            isMoving = horizontalVelocity.magnitude > 0.5f; 
+            isGroundedAudio = Physics.Raycast(transform.position, Vector3.down, raycastLength, groundLayer);
+            
+            if (footstepManager != null) footstepManager.SetFootsteps(isMoving && isGroundedAudio);
         }
 
-        // 2. Gather Input locally (Only for the owner)
+        // --- NEW: Apply continuous walking rumble ---
+        if (cameraShaker != null)
+        {
+            // Change this:
+            cameraShaker.SetBaseTrauma((isMoving && isGroundedAudio && !isStunned) ? 0.08f : 0f);
+        }
+
         if (!IsOwner || !playerCamera) return;
+
+        if (balloonShooter != null && !balloonShooter.enabled) 
+        {
+            currentInput = Vector2.zero;
+            UpdateMovementInputsServerRpc(Vector2.zero, Vector3.forward, Vector3.right, false);
+            return;
+        }
 
         currentInput = new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical")).normalized;
         
-        if (Input.GetKeyDown(KeyCode.Space))
+        if (handAnimator != null)
         {
-            jumpRequested = true;
+            handAnimator.SetWalking(currentInput.sqrMagnitude > 0.01f);
         }
 
-        // 3. Calculate Camera Vectors
+        if (Input.GetKeyDown(KeyCode.Space)) jumpRequested = true;
+
         camForward = playerCamera.forward;
         camForward.y = 0;
         camForward.Normalize();
@@ -75,7 +152,6 @@ public class NetworkPlayerMovement : NetworkBehaviour
         camRight.y = 0;
         camRight.Normalize();
 
-        // 4. Send current state to the Server
         UpdateMovementInputsServerRpc(currentInput, camForward, camRight, jumpRequested);
         
         jumpRequested = false; 
@@ -83,42 +159,34 @@ public class NetworkPlayerMovement : NetworkBehaviour
 
     void FixedUpdate()
     {
-        if (IsServer) 
-        {
-            ApplyPhysicsMovement();
-        }
+        if (IsServer) ApplyPhysicsMovement();
     }
 
     void ApplyPhysicsMovement()
     {
-        bool isGrounded = false;
-        
         if (Physics.Raycast(transform.position, Vector3.down, out RaycastHit hit, raycastLength, groundLayer))
         {
-            isGrounded = true;
-
             float distanceOffset = rideHeight - hit.distance;
             float upwardVelocity = rb.linearVelocity.y;
-            
             float springForce = (distanceOffset * rideSpringStrength) - (upwardVelocity * rideSpringDamper);
-            
             rb.AddForce(Vector3.up * springForce, ForceMode.Acceleration);
         }
 
-        Vector3 moveDirection = (serverCamForward * serverInput.y + serverCamRight * serverInput.x).normalized;
-        Vector3 targetVelocity = moveDirection * maxMoveSpeed;
-        
-        Vector3 currentVelocityXZ = new Vector3(rb.linearVelocity.x, 0, rb.linearVelocity.z);
-        
-        Vector3 velocityDifference = targetVelocity - currentVelocityXZ;
-        rb.AddForce(velocityDifference * acceleration, ForceMode.Acceleration);
-
-        if (serverJumpRequested && isGrounded)
+        if (!isStunned)
         {
-            rb.linearVelocity = new Vector3(rb.linearVelocity.x, 0f, rb.linearVelocity.z);
-            rb.AddForce(Vector3.up * jumpForce, ForceMode.VelocityChange);
+            Vector3 moveDirection = (serverCamForward * serverInput.y + serverCamRight * serverInput.x).normalized;
+            Vector3 targetVelocity = moveDirection * maxMoveSpeed;
+            Vector3 currentVelocityXZ = new Vector3(rb.linearVelocity.x, 0, rb.linearVelocity.z);
             
-            serverJumpRequested = false; 
+            Vector3 velocityDifference = targetVelocity - currentVelocityXZ;
+            rb.AddForce(velocityDifference * acceleration, ForceMode.Acceleration);
+
+            if (serverJumpRequested && Physics.Raycast(transform.position, Vector3.down, raycastLength, groundLayer))
+            {
+                rb.linearVelocity = new Vector3(rb.linearVelocity.x, 0f, rb.linearVelocity.z);
+                rb.AddForce(Vector3.up * jumpForce, ForceMode.VelocityChange);
+                serverJumpRequested = false; 
+            }
         }
     }
 

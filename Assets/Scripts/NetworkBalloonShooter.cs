@@ -9,6 +9,9 @@ public class NetworkBalloonShooter : NetworkBehaviour
     public Transform throwPoint; 
     public GameObject balloonPrefab;
     public PlayerColorManager colorManager; 
+    public NetworkHandsAnimator handAnimator; 
+    public PlayerInteract playerInteract; 
+    public ProceduralCameraShaker cameraShaker; // --- NEW ---
 
     [HideInInspector] public int currentShadeIndex = 0; 
 
@@ -18,6 +21,7 @@ public class NetworkBalloonShooter : NetworkBehaviour
     public float maxChargeTime = 1.5f;
     public float upwardThrowBias = 2f; 
     public float throwCooldown = 0.65f; 
+    public float windupTime = 0.25f; 
 
     [Header("Trajectory Preview")]
     public LineRenderer trajectoryLine;
@@ -27,8 +31,10 @@ public class NetworkBalloonShooter : NetworkBehaviour
     public float trajectoryTimeStep = 0.1f;
 
     [Header("State (Read Only)")]
+    public bool isWindingUp = false; 
     public bool isCharging = false;
     public float currentChargeTime = 0f;
+    private float windupStartTime = 0f; 
     private float lastThrowTime = -100f; 
 
     [Header("Events")]
@@ -61,60 +67,114 @@ public class NetworkBalloonShooter : NetworkBehaviour
 
     private void HandleChargeInput()
     {
+        if (playerInteract != null && playerInteract.IsHovering())
+        {
+            if (isWindingUp || isCharging) CancelCharge();
+            return;
+        }
+
         if (Input.GetKeyDown(KeyCode.Mouse0) && Time.time >= lastThrowTime + throwCooldown)
         {
-            isCharging = true;
-            currentChargeTime = 0f;
-            if (trajectoryLine != null) trajectoryLine.enabled = true;
-            OnStartCharge?.Invoke();
+            isWindingUp = true;
+            windupStartTime = Time.time;
+            if (handAnimator != null) handAnimator.SetThrowWindup(true); 
         }
 
-        if (Input.GetKey(KeyCode.Mouse0) && isCharging)
+        if (Input.GetKey(KeyCode.Mouse0))
         {
-            currentChargeTime += Time.deltaTime;
-            currentChargeTime = Mathf.Clamp(currentChargeTime, 0, maxChargeTime);
-            DrawTrajectory();
-        }
-
-        if (Input.GetKeyUp(KeyCode.Mouse0) && isCharging)
-        {
-            isCharging = false;
-            lastThrowTime = Time.time; 
-            
-            if (trajectoryLine != null) trajectoryLine.enabled = false;
-            OnThrow?.Invoke(); 
-
-            float chargePercent = currentChargeTime / maxChargeTime;
-            float finalForce = Mathf.Lerp(minThrowForce, maxThrowForce, chargePercent);
-
-            Vector3 throwDirection = cameraTransform.forward;
-            throwDirection.y += (upwardThrowBias / finalForce); 
-            throwDirection.Normalize();
-
-            // --- NEW: Calculate the exact colors locally ---
-            Color bColor = Color.white;
-            Color pColor = Color.white;
-
-            if (colorManager != null && colorManager.colorSets.Length > 0)
+            if (isWindingUp)
             {
-                int pIndex = colorManager.colorIndex.Value;
-                var sets = colorManager.colorSets;
-                var shades = sets[pIndex % sets.Length].balloonShades;
-                
-                if (shades.Length > 0)
+                if (Time.time >= windupStartTime + windupTime)
                 {
-                    var specificShade = shades[currentShadeIndex % shades.Length];
-                    bColor = specificShade.balloonColor;
-                    pColor = specificShade.particleColor;
+                    isWindingUp = false;
+                    isCharging = true;
+                    currentChargeTime = 0f;
+                    
+                    if (trajectoryLine != null) trajectoryLine.enabled = true;
+                    OnStartCharge?.Invoke();
                 }
             }
-
-            // Send the raw colors over the network to bake into the projectile
-            ThrowServerRpc(throwPoint.position, throwDirection, finalForce, bColor, pColor);
-            
-            PickNextShade(); 
-            currentChargeTime = 0f;
+            else if (isCharging)
+            {
+                currentChargeTime += Time.deltaTime;
+                currentChargeTime = Mathf.Clamp(currentChargeTime, 0, maxChargeTime);
+                DrawTrajectory();
+            }
         }
+
+        if (Input.GetKeyUp(KeyCode.Mouse0))
+        {
+            if (isWindingUp) CancelCharge();
+            else if (isCharging) ExecuteThrow();
+        }
+
+        if (!Input.GetKey(KeyCode.Mouse0) && (isWindingUp || isCharging))
+        {
+            CancelCharge();
+        }
+    }
+
+    private void CancelCharge()
+    {
+        isWindingUp = false;
+        isCharging = false;
+        currentChargeTime = 0f;
+        
+        if (trajectoryLine != null) trajectoryLine.enabled = false;
+        if (handAnimator != null) handAnimator.SetThrowWindup(false);
+    }
+
+    private void ExecuteThrow()
+    {
+        isCharging = false;
+        lastThrowTime = Time.time; 
+        
+        if (trajectoryLine != null) trajectoryLine.enabled = false;
+        
+        if (handAnimator != null) 
+        {
+            handAnimator.SetThrowWindup(false);
+            handAnimator.TriggerThrowRelease();
+        }
+        
+        OnThrow?.Invoke(); 
+
+        float chargePercent = currentChargeTime / maxChargeTime;
+        float finalForce = Mathf.Lerp(minThrowForce, maxThrowForce, chargePercent);
+
+        // --- NEW: Add throwing kick to the camera! ---
+        if (cameraShaker != null)
+        {
+            // Gives a sharp trauma kick between 0.2 (tap) and 0.5 (max charge)
+            // Change this:
+            cameraShaker.AddTrauma(Mathf.Lerp(0.1f, 0.25f, chargePercent));
+        }
+
+        Vector3 throwDirection = cameraTransform.forward;
+        throwDirection.y += (upwardThrowBias / finalForce); 
+        throwDirection.Normalize();
+
+        Color bColor = Color.white;
+        Color pColor = Color.white;
+
+        if (colorManager != null && colorManager.colorSets.Length > 0)
+        {
+            int pIndex = colorManager.colorIndex.Value;
+            var sets = colorManager.colorSets;
+            var shades = sets[pIndex % sets.Length].balloonShades;
+            
+            if (shades.Length > 0)
+            {
+                var specificShade = shades[currentShadeIndex % shades.Length];
+                bColor = specificShade.balloonColor;
+                pColor = specificShade.particleColor;
+            }
+        }
+
+        ThrowServerRpc(throwPoint.position, throwDirection, finalForce, bColor, pColor);
+        
+        PickNextShade(); 
+        currentChargeTime = 0f;
     }
 
     private void DrawTrajectory()
@@ -180,7 +240,6 @@ public class NetworkBalloonShooter : NetworkBehaviour
         return currentChargeTime / maxChargeTime;
     }
 
-    // --- NEW: The RPC now accepts the specific Unity Colors ---
     [ServerRpc]
     public void ThrowServerRpc(Vector3 spawnPosition, Vector3 direction, float force, Color bColor, Color pColor, ServerRpcParams rpcParams = default)
     {
@@ -193,15 +252,9 @@ public class NetworkBalloonShooter : NetworkBehaviour
             proj.syncedParticleColor.Value = pColor;
         }
 
-        if (networkObj != null)
-        {
-            networkObj.SpawnWithOwnership(rpcParams.Receive.SenderClientId);
-        }
+        if (networkObj != null) networkObj.SpawnWithOwnership(rpcParams.Receive.SenderClientId);
 
         Rigidbody rb = balloonInstance.GetComponent<Rigidbody>();
-        if (rb != null)
-        {
-            rb.AddForce(direction * force, ForceMode.Impulse);
-        }
+        if (rb != null) rb.AddForce(direction * force, ForceMode.Impulse);
     }
 }

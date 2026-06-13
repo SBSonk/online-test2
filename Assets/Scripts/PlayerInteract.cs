@@ -7,40 +7,52 @@ public class PlayerInteract : NetworkBehaviour
     public float interactDistance = 3f;
     public LayerMask interactableLayer;
     public KeyCode interactKey = KeyCode.E;
-    
-    [Tooltip("How long (in seconds) the game remembers your interact key press. Helps catch high-speed drive-by interactions.")]
     public float interactBufferTime = 0.15f; 
 
     [Header("References")]
     public Transform playerCamera;
     public GameObject playerSelf;
+    public NetworkHandsAnimator handAnimator; 
+    
+    // --- NEW: Reference to the shooter script for interlocks ---
+    public NetworkBalloonShooter balloonShooter; 
 
     private Interactable currentInteractable;
     private float _lastInteractPressTime = -100f; 
 
+    // --- NEW: Expose the hover state so the shooter script can read it ---
+    public bool IsHovering()
+    {
+        return currentInteractable != null;
+    }
+
     private void Update()
     {
-        // Prevent local inputs from controlling other players' avatars
         if (!IsOwner) return;
 
-        // 1. Log the input immediately, regardless of what you are looking at
+        // --- NEW: INTERLOCK ---
+        // If the player is currently winding up or holding a balloon, don't let them interact!
+        if (balloonShooter != null && (balloonShooter.isWindingUp || balloonShooter.isCharging))
+        {
+            ClearInteractable(); // Force the hand to drop if you turn toward a button while charging
+            return;
+        }
+
         if (Input.GetKeyDown(interactKey))
         {
             _lastInteractPressTime = Time.time;
         }
 
-        // 2. Perform the Raycast to find what we are looking at
         CheckForInteractable();
 
-        // 3. Buffered Interaction Trigger
         if (currentInteractable != null)
         {
-            // If the key was pressed recently enough (within the buffer window)
             if (Time.time - _lastInteractPressTime <= interactBufferTime)
             {
                 currentInteractable.Interact(playerSelf); 
                 
-                // Consume the buffer so it doesn't double-trigger on the next frame
+                if (handAnimator != null) handAnimator.TriggerPress();
+                
                 _lastInteractPressTime = -100f; 
             }
         }
@@ -48,7 +60,6 @@ public class PlayerInteract : NetworkBehaviour
 
     private void CheckForInteractable()
     {
-        // Don't raycast if the camera isn't assigned
         if (playerCamera == null) return;
 
         Ray ray = new Ray(playerCamera.position, playerCamera.forward);
@@ -69,6 +80,8 @@ public class PlayerInteract : NetworkBehaviour
 
                     currentInteractable = hitObject;
                     currentInteractable.BeginHover();
+                    
+                    if (handAnimator != null) handAnimator.SetHovering(true); 
                 }
                 else
                 {
@@ -92,6 +105,8 @@ public class PlayerInteract : NetworkBehaviour
         {
             currentInteractable.EndHover();
             currentInteractable = null;
+            
+            if (handAnimator != null) handAnimator.SetHovering(false); 
         }
     }
 }

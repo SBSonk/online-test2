@@ -11,8 +11,9 @@ public class BalloonProjectile : NetworkBehaviour
     [Header("Settings")]
     public float autoDestroyTime = 5f;
     public float damage = 10f; 
+    public float knockbackForce = 25f; 
+    public float upwardKnockback = 8f; 
 
-    // NEW: We now sync the exact colors directly! No player lookups required.
     public NetworkVariable<Color> syncedBalloonColor = new NetworkVariable<Color>();
     public NetworkVariable<Color> syncedParticleColor = new NetworkVariable<Color>();
     
@@ -20,16 +21,37 @@ public class BalloonProjectile : NetworkBehaviour
 
     public override void OnNetworkSpawn()
     {
-        if (IsServer)
-        {
-            Invoke(nameof(DestroyBalloon), autoDestroyTime);
-        }
-
-        syncedBalloonColor.OnValueChanged += (oldVal, newVal) => ApplyVisuals();
+        if (IsServer) Invoke(nameof(DestroyBalloon), autoDestroyTime);
         
-        // Because the shooter script sets these variables before spawning, 
-        // the colors are 100% guaranteed to be here on frame 1.
+        syncedBalloonColor.OnValueChanged += (oldVal, newVal) => ApplyVisuals();
         ApplyVisuals(); 
+
+        // --- NEW: Ignore collision with the person who threw it! ---
+        IgnoreOwnerCollisions();
+    }
+
+    private void IgnoreOwnerCollisions()
+    {
+        // Find the player object that belongs to whoever spawned this balloon
+        NetworkObject ownerPlayer = NetworkManager.Singleton.SpawnManager.GetPlayerNetworkObject(OwnerClientId);
+        
+        if (ownerPlayer != null)
+        {
+            // Get all colliders on the balloon (usually just one, but safe to grab all)
+            Collider[] balloonColliders = GetComponentsInChildren<Collider>();
+            
+            // Get all colliders on the player (capsule, hands, etc.)
+            Collider[] playerColliders = ownerPlayer.GetComponentsInChildren<Collider>();
+
+            // Tell Unity's physics engine that these specific colliders are ghosts to each other
+            foreach (Collider bCol in balloonColliders)
+            {
+                foreach (Collider pCol in playerColliders)
+                {
+                    Physics.IgnoreCollision(bCol, pCol, true);
+                }
+            }
+        }
     }
 
     private void ApplyVisuals()
@@ -37,7 +59,6 @@ public class BalloonProjectile : NetworkBehaviour
         if (balloonRenderer != null) 
         {
             balloonRenderer.material.color = syncedBalloonColor.Value;
-            
             if (balloonRenderer.material.HasProperty("_BaseColor"))
             {
                 balloonRenderer.material.SetColor("_BaseColor", syncedBalloonColor.Value);
@@ -60,9 +81,18 @@ public class BalloonProjectile : NetworkBehaviour
 
         if (collision.gameObject.TryGetComponent(out NetworkHasHealth health))
         {
-            // Cast damage to int based on our previous health script update
             health.TakeDamage((int)damage, OwnerClientId);
             NotifyHitRpc();
+        }
+
+        if (collision.gameObject.TryGetComponent(out NetworkPlayerMovement playerMove))
+        {
+            Vector3 knockbackDir = transform.forward;
+            knockbackDir.y = 0; 
+            knockbackDir.Normalize();
+            Vector3 finalForce = (knockbackDir * knockbackForce) + (Vector3.up * upwardKnockback);
+
+            playerMove.TakeBalloonHit(finalForce, syncedBalloonColor.Value);
         }
 
         Invoke(nameof(DestroyBalloon), 1f);
@@ -72,9 +102,7 @@ public class BalloonProjectile : NetworkBehaviour
     private void TriggerPopClientRpc()
     {
         if (TryGetComponent(out Rigidbody rb)) rb.isKinematic = true;
-        
         if (balloonMesh != null) balloonMesh.SetActive(false);
-        
         if (popParticles != null) 
         {
             popParticles.gameObject.SetActive(true);
@@ -91,9 +119,6 @@ public class BalloonProjectile : NetworkBehaviour
 
     private void DestroyBalloon()
     {
-        if (NetworkObject != null && NetworkObject.IsSpawned)
-        {
-            NetworkObject.Despawn();
-        }
+        if (NetworkObject != null && NetworkObject.IsSpawned) NetworkObject.Despawn();
     }
 }

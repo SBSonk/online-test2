@@ -20,21 +20,21 @@ Material:
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: Material.001
-  m_Shader: {fileID: 4800000, guid: 71a090e9b5b488349913abe716bb7bc6, type: 3}
+  m_Name: OutlineTest
+  m_Shader: {fileID: -6465566751694194690, guid: 3a63e5c6ca3f5c040975aa863a5e2cd0, type: 3}
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
   m_ValidKeywords:
+  - _SNAPMODE_VIEW
+  m_InvalidKeywords:
   - _DITHERMODE_SCREEN
   - _FILTERMODE_POINT
   - _LIGHTMODE_TEXELLIT
   - _RECEIVESHADOWSMODE_ON
-  - _SNAPMODE_OFF
   - _USE_FLAT_SHADING
-  - _WRAPMODE_REPEAT
-  m_InvalidKeywords:
   - _USE_FLAT_SHADING_ON
   - _USE_VERTEX_COLORS_OFF
+  - _WRAPMODE_REPEAT
   m_LightmapFlags: 4
   m_EnableInstancingVariants: 0
   m_DoubleSidedGI: 0
@@ -117,7 +117,7 @@ Material:
     - _LightMode: 1
     - _ReceiveShadowsMode: 0
     - _ResolutionLimit: 64
-    - _SnapMode: 3
+    - _SnapMode: 1
     - _SnapsPerUnit: 32
     - _WrapMode: 1
     m_Floats:
@@ -148,14 +148,18 @@ Material:
     - _NormalStrength: 1
     - _OcclusionStrength: 1
     - _Parallax: 0.02
+    - _QueueControl: -1
     - _QueueOffset: 0
     - _ReceiveShadows: 1
+    - _SNAPMODE: 2
     - _Smoothness: 1
     - _SmoothnessTextureChannel: 0
+    - _SnapsPerUnit: 2340.9
     - _SpecularHighlights: 1
     - _SrcBlend: 1
     - _SrcBlendAlpha: 1
     - _Surface: 0
+    - _Thickness: 0.015
     - _USE_AMBIENT_OVERRIDE: 0
     - _USE_FLAT_SHADING: 1
     - _USE_REFLECTION_CUBEMAP: 0
@@ -166,7 +170,7 @@ Material:
     - _XRMotionVectorsPass: 1
     - _ZWrite: 1
     m_Colors:
-    - _BaseColor: {r: 0.9063354, g: 0.22019717, b: 0, a: 1}
+    - _BaseColor: {r: 1, g: 1, b: 1, a: 1}
     - _Color: {r: 0.9063354, g: 0.22019714, b: 0, a: 1}
     - _CubemapColor: {r: 1, g: 1, b: 1, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 0}

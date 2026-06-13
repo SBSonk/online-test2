@@ -307,11 +307,18 @@ MonoBehaviour:
   popParticles: {fileID: 8357470180837467004}
   autoDestroyTime: 5
   damage: 25
-  shadeIndex:
+  knockbackForce: 1
+  upwardKnockback: 2
+  syncedBalloonColor:
     UpdateTraits:
       MinSecondsBetweenUpdates: 0
       MaxSecondsBetweenUpdates: 0
-    m_InternalValue: 0
+    m_InternalValue: {r: 0, g: 0, b: 0, a: 0}
+  syncedParticleColor:
+    UpdateTraits:
+      MinSecondsBetweenUpdates: 0
+      MaxSecondsBetweenUpdates: 0
+    m_InternalValue: {r: 0, g: 0, b: 0, a: 0}
 --- !u!1001 &991620441941609640
 PrefabInstance:
   m_ObjectHideFlags: 0
