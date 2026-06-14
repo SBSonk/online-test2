@@ -4,6 +4,10 @@ using System.Collections.Generic;
 
 public class PlayerBooth : NetworkBehaviour
 {
+    [Header("Mode Assignment")]
+    [Tooltip("Which game mode does this specific booth belong to?")]
+    public NetworkMatchManager.GameMode boothMode = NetworkMatchManager.GameMode.ShootingGallery;
+
     [Header("Visuals")]
     public Renderer floorHighlight;
     public Color idleColor = new Color(1f, 1f, 1f, 0.1f);   
@@ -24,13 +28,12 @@ public class PlayerBooth : NetworkBehaviour
     {
         isBoothOccupied.OnValueChanged += (oldVal, newVal) => UpdateVisuals();
         assignedColor.OnValueChanged += (oldVal, newVal) => UpdateVisuals();
-        
-        // --- THE FIX: Listen for the Client ID arriving over the network! ---
         assignedClientId.OnValueChanged += (oldVal, newVal) => UpdateVisuals(); 
         
         if (NetworkMatchManager.Instance != null)
         {
             NetworkMatchManager.Instance.currentState.OnValueChanged += HandleStateChange;
+            NetworkMatchManager.Instance.currentGameMode.OnValueChanged += (oldMode, newMode) => UpdateVisuals();
         }
         
         UpdateVisuals(); 
@@ -41,6 +44,7 @@ public class PlayerBooth : NetworkBehaviour
         if (NetworkMatchManager.Instance != null)
         {
             NetworkMatchManager.Instance.currentState.OnValueChanged -= HandleStateChange;
+            NetworkMatchManager.Instance.currentGameMode.OnValueChanged -= (oldMode, newMode) => UpdateVisuals();
         }
     }
 
@@ -50,33 +54,42 @@ public class PlayerBooth : NetworkBehaviour
 
         if (!IsServer) return;
 
+        // --- THE FIX: Completely wipe all internal states when leaving the Waiting phase ---
+        if (newState == NetworkMatchManager.MatchState.Active || newState == NetworkMatchManager.MatchState.Lobby)
+        {
+            foreach (var player in playersLockedAndReady)
+            {
+                if (player != null) player.SetBoothLock(false, null);
+            }
+            playersLockedAndReady.Clear();
+            
+            // This is the variable that was getting stuck!
+            isBoothOccupied.Value = false; 
+        }
+
+        if (NetworkMatchManager.Instance.currentGameMode.Value != boothMode) return;
+
+        // If a new match starts and players are already standing in the booth, lock them!
         if (newState == NetworkMatchManager.MatchState.WaitingForPositions)
         {
             foreach (var player in playersPhysicallyInside)
             {
                 if (player != null && !playersLockedAndReady.Contains(player))
                 {
-                    if (player.OwnerClientId == assignedClientId.Value)
-                    {
-                        LockAndReadyPlayer(player);
-                    }
+                    if (player.OwnerClientId == assignedClientId.Value) LockAndReadyPlayer(player);
                 }
             }
-        }
-
-        if (newState == NetworkMatchManager.MatchState.Active)
-        {
-            foreach (var player in playersLockedAndReady)
-            {
-                if (player != null) player.SetBoothLock(false, null);
-            }
-            playersLockedAndReady.Clear(); 
         }
     }
 
     private void UpdateVisuals()
     {
         if (NetworkMatchManager.Instance == null) return;
+
+        bool isActiveMode = (NetworkMatchManager.Instance.currentGameMode.Value == boothMode);
+        if (floorHighlight != null) floorHighlight.enabled = isActiveMode;
+
+        if (!isActiveMode) return; 
 
         var state = NetworkMatchManager.Instance.currentState.Value;
         
@@ -106,6 +119,8 @@ public class PlayerBooth : NetworkBehaviour
     {
         if (!IsServer) return; 
         
+        if (NetworkMatchManager.Instance.currentGameMode.Value != boothMode) return;
+        
         if (other.TryGetComponent(out NetworkPlayerMovement player))
         {
             if (!playersPhysicallyInside.Contains(player)) 
@@ -113,10 +128,7 @@ public class PlayerBooth : NetworkBehaviour
 
             if (NetworkMatchManager.Instance.currentState.Value == NetworkMatchManager.MatchState.WaitingForPositions)
             {
-                if (player.OwnerClientId == assignedClientId.Value)
-                {
-                    LockAndReadyPlayer(player);
-                }
+                if (player.OwnerClientId == assignedClientId.Value) LockAndReadyPlayer(player);
             }
         }
     }
@@ -124,6 +136,7 @@ public class PlayerBooth : NetworkBehaviour
     private void OnTriggerExit(Collider other)
     {
         if (!IsServer) return; 
+        if (NetworkMatchManager.Instance.currentGameMode.Value != boothMode) return;
         
         if (other.TryGetComponent(out NetworkPlayerMovement player))
         {
@@ -132,10 +145,7 @@ public class PlayerBooth : NetworkBehaviour
 
             if (NetworkMatchManager.Instance.currentState.Value == NetworkMatchManager.MatchState.WaitingForPositions)
             {
-                if (player.OwnerClientId == assignedClientId.Value)
-                {
-                    UnlockAndUnreadyPlayer(player);
-                }
+                if (player.OwnerClientId == assignedClientId.Value) UnlockAndUnreadyPlayer(player);
             }
         }
     }

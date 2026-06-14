@@ -139,27 +139,33 @@ public class NetworkMatchManager : NetworkBehaviour
     {
         if (!IsServer) return;
 
-        GameObject[] boothObjects = GameObject.FindGameObjectsWithTag("PlayerBooth");
-        foreach (var obj in boothObjects)
+        // 1. Get every single booth in the scene
+        PlayerBooth[] allBooths = FindObjectsByType<PlayerBooth>(FindObjectsSortMode.None);
+        List<PlayerBooth> activeBooths = new List<PlayerBooth>();
+
+        // 2. Reset ALL booths, but only add the ones that match our GameMode to the active list
+        foreach (var booth in allBooths)
         {
-            if (obj.TryGetComponent(out PlayerBooth booth))
+            booth.assignedClientId.Value = 999; 
+            if (booth.boothMode == currentGameMode.Value)
             {
-                booth.assignedClientId.Value = 999; 
+                activeBooths.Add(booth);
             }
         }
 
+        // 3. Assign the filtered booths to the players!
         int boothIndex = 0;
         foreach (var clientId in NetworkManager.Singleton.ConnectedClientsIds)
         {
-            if (boothIndex >= boothObjects.Length) break;
-            if (boothObjects[boothIndex].TryGetComponent(out PlayerBooth booth))
+            if (boothIndex >= activeBooths.Count) break;
+            
+            var booth = activeBooths[boothIndex];
+            booth.assignedClientId.Value = clientId;
+            
+            if (colorSets.Length > 0)
             {
-                booth.assignedClientId.Value = clientId;
-                if (colorSets.Length > 0)
-                {
-                    int safeIndex = (int)(clientId % (ulong)colorSets.Length);
-                    booth.assignedColor.Value = colorSets[safeIndex].playerColor;
-                }
+                int safeIndex = (int)(clientId % (ulong)colorSets.Length);
+                booth.assignedColor.Value = colorSets[safeIndex].playerColor;
             }
             boothIndex++;
         }
@@ -167,10 +173,10 @@ public class NetworkMatchManager : NetworkBehaviour
 
     private void ResetBooths()
     {
-        GameObject[] boothObjects = GameObject.FindGameObjectsWithTag("PlayerBooth");
-        foreach (var obj in boothObjects)
+        PlayerBooth[] allBooths = FindObjectsByType<PlayerBooth>();
+        foreach (var booth in allBooths) 
         {
-            if (obj.TryGetComponent(out PlayerBooth booth)) booth.assignedClientId.Value = 999;
+            booth.assignedClientId.Value = 999;
         }
     }
 
