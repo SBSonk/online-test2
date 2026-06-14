@@ -1,48 +1,62 @@
-using TMPro;
 using UnityEngine;
+using TMPro;
+using DG.Tweening;
 
+[RequireComponent(typeof(CanvasGroup))]
 public class DamagePopup : MonoBehaviour
 {
-    public TextMeshPro textMesh;
-    public float floatSpeed = 2f;
-    public float fadeSpeed = 3f;
-    public float lifeTime = 0.5f;
+    public TMP_Text textMesh;
+    private CanvasGroup canvasGroup;
 
-    private Color textColor;
-    private float timer;
-    private Transform mainCamera;
+    [Header("Animation Settings")]
+    public float floatHeight = 1.5f;
+    public float animationDuration = 1.2f;
 
-    public void Initialize(int damageAmount)
+    private void Awake()
     {
-        textMesh.text = damageAmount.ToString();
-        textColor = textMesh.color;
-        timer = lifeTime;
-        
-        if (Camera.main != null) 
-            mainCamera = Camera.main.transform;
-
-        transform.position += new Vector3(Random.Range(-0.5f, 0.5f), Random.Range(-0.5f, 0.5f), 0);
+        canvasGroup = GetComponent<CanvasGroup>();
     }
 
-    void Update()
+    public void InitializeScore(int scoreAmount, Color popupColor)
     {
-        transform.position += Vector3.up * floatSpeed * Time.deltaTime;
+        if (textMesh == null) return;
 
-        if (mainCamera != null)
+        // 1. Set the color
+        textMesh.color = popupColor;
+
+        // 2. Format the score text
+        if (scoreAmount > 0)
         {
-            transform.rotation = Quaternion.LookRotation(transform.position - mainCamera.position);
+            textMesh.text = "+" + scoreAmount.ToString("N0");
+        }
+        else if (scoreAmount < 0)
+        {
+            textMesh.text = scoreAmount.ToString("N0"); 
+        }
+        else
+        {
+            textMesh.text = "+0"; 
         }
 
-        timer -= Time.deltaTime;
-        if (timer < 0)
-        {
-            textColor.a -= fadeSpeed * Time.deltaTime;
-            textMesh.color = textColor;
-            
-            if (textColor.a <= 0)
-            {
+        // 3. Trigger the DOTween Sequence
+        AnimateAndDestroy();
+    }
+
+    private void AnimateAndDestroy()
+    {
+        // Start small and pop to full size
+        transform.localScale = Vector3.zero;
+        transform.DOScale(Vector3.one, 0.3f).SetEase(Ease.OutBack);
+
+        // Float upwards
+        transform.DOMoveY(transform.position.y + floatHeight, animationDuration).SetEase(Ease.OutQuad);
+
+        // Fade out starting halfway through the animation
+        canvasGroup.alpha = 1f;
+        canvasGroup.DOFade(0f, animationDuration * 0.5f).SetDelay(animationDuration * 0.5f)
+            .OnComplete(() => {
+                // Completely destroy the object when the fade is done to free memory!
                 Destroy(gameObject);
-            }
-        }
+            });
     }
 }

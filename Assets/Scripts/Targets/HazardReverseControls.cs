@@ -1,6 +1,6 @@
 // --- ReverseControlsTarget.cs ---
 // Attach to your Penalty Prefab
-public class ReverseControlsTarget : CarnivalTarget
+public class HazardReverseControls : CarnivalTarget
 {
     protected override void ApplySpecialEffect(ulong shooterClientId)
     {

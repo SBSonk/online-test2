@@ -12,6 +12,7 @@ GameObject:
   - component: {fileID: 3798986910892702142}
   - component: {fileID: 838116185484008469}
   - component: {fileID: 2143015114065681700}
+  - component: {fileID: 4585729232867721765}
   m_Layer: 0
   m_Name: DamagePopUp
   m_TagString: Untagged
@@ -195,6 +196,17 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DamagePopup
   textMesh: {fileID: 838116185484008469}
-  floatSpeed: 2
-  fadeSpeed: 3
-  lifeTime: 0.5
+  floatHeight: 1.5
+  animationDuration: 1.2
+--- !u!225 &4585729232867721765
+CanvasGroup:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1141670872112632311}
+  m_Enabled: 1
+  m_Alpha: 1
+  m_Interactable: 1
+  m_BlocksRaycasts: 1
+  m_IgnoreParentGroups: 0

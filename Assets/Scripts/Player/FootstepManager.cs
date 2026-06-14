@@ -8,11 +8,15 @@ public class FootstepManager : MonoBehaviour
     public float rayDistance = 2f; 
     public LayerMask groundLayer;
 
+    [Header("Timings")]
     public float walkTime = 0.5f;
+    public float sprintTime = 0.3f; // Faster footstep loop when running
+    private float currentStepInterval;
 
+    [Header("Audio Sources")]
     public AudioSource leftFootSrc, rightFootSrc;
     
-    // --- ADDED: Event to broadcast when a step actually happens ---
+    // Event to broadcast when a step actually happens
     public event Action OnStep;
 
     #region Clips
@@ -27,11 +31,13 @@ public class FootstepManager : MonoBehaviour
     FloorType currentFloor = FloorType.Tile;
     private bool stepRight = false;
     private bool playFootsteps = false;
+    private bool isSprinting = false;
 
     #endregion
 
     private void Start()
     {
+        currentStepInterval = walkTime;
         StartCoroutine(FootstepLoop());
     }
 
@@ -86,13 +92,14 @@ public class FootstepManager : MonoBehaviour
                     {
                         audioSource.PlayOneShot(clip);
                         
-                        // --- ADDED: Fire the event perfectly synced with the audio ---
+                        // Fire the event perfectly synced with the audio
                         OnStep?.Invoke();
                     }
                 }
             }
             
-            yield return new WaitForSeconds(walkTime);
+            // Wait for the dynamic step interval
+            yield return new WaitForSeconds(currentStepInterval);
 
             // Switch Feet
             stepRight = !stepRight;
@@ -102,6 +109,13 @@ public class FootstepManager : MonoBehaviour
     public void SetFootsteps(bool setEnabled) 
     {
         playFootsteps = setEnabled;
+    }
+
+    public void SetSprintState(bool sprinting)
+    {
+        isSprinting = sprinting;
+        // Smoothly adjust the delay between footsteps based on state
+        currentStepInterval = isSprinting ? sprintTime : walkTime;
     }
 }
 

@@ -1,8 +1,8 @@
 using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.Events;
-using NaughtyAttributes;
 using System.Collections.Generic;
+using System.Collections; 
 
 public class NetworkMatchManager : NetworkBehaviour
 {
@@ -18,6 +18,14 @@ public class NetworkMatchManager : NetworkBehaviour
     public NetworkVariable<int> playersReadyCount = new NetworkVariable<int>(0);
     private HashSet<ulong> readyPlayerIds = new HashSet<ulong>();
 
+    [Header("UI & Announcer References")]
+    public GameAnnouncer announcer;
+    public DiegeticLeaderboard leaderboard;
+
+    [Header("Minigame Settings")]
+    public int firstArrivalBonusPoints = 250;
+    private bool isFirstArrivalAwarded = false; 
+
     [Header("Lobby Settings (Synced)")]
     public NetworkVariable<GameMode> currentGameMode = new NetworkVariable<GameMode>(GameMode.ShootingGallery);
     public NetworkVariable<float> matchDurationSetting = new NetworkVariable<float>(60f);
@@ -28,12 +36,16 @@ public class NetworkMatchManager : NetworkBehaviour
     public NetworkVariable<float> targetSpeedSetting = new NetworkVariable<float>(3.0f);
     public NetworkVariable<int> chaosLevelSetting = new NetworkVariable<int>(0);
 
+    [Header("Booth Assignment")]
+    public PlayerColorSet[] colorSets; 
+
     [Header("Events")]
     public UnityEvent OnMatchStart;
     public UnityEvent OnMatchEnd;
     public UnityEvent OnSettingsChanged;
     public UnityEvent OnWaitingForPositions;
-    public UnityEvent<int> OnCountdownTick;
+
+    private bool isMatchEnding = false;
 
     private int lastCountdownSecond = 3;
 
@@ -52,6 +64,36 @@ public class NetworkMatchManager : NetworkBehaviour
         targetSpeedSetting.OnValueChanged += (o, n) => OnSettingsChanged?.Invoke();
         chaosLevelSetting.OnValueChanged += (o, n) => OnSettingsChanged?.Invoke();
         currentState.OnValueChanged += HandleStateChanged;
+
+        // --- NEW: Listen for players joining/leaving to update the board ---
+        if (IsServer)
+        {
+            NetworkManager.Singleton.OnClientConnectedCallback += HandleClientConnectionChanged;
+            NetworkManager.Singleton.OnClientDisconnectCallback += HandleClientConnectionChanged;
+        }
+    }
+
+    public override void OnNetworkDespawn()
+    {
+        // Clean up memory leaks
+        if (IsServer && NetworkManager.Singleton != null)
+        {
+            NetworkManager.Singleton.OnClientConnectedCallback -= HandleClientConnectionChanged;
+            NetworkManager.Singleton.OnClientDisconnectCallback -= HandleClientConnectionChanged;
+        }
+    }
+
+    // --- NEW: Triggered when anyone joins or leaves ---
+    private void HandleClientConnectionChanged(ulong clientId)
+    {
+        StartCoroutine(DelayedLeaderboardUpdate());
+    }
+
+    // A tiny delay ensures the player's networked objects have fully spawned before we read them
+    private IEnumerator DelayedLeaderboardUpdate()
+    {
+        yield return new WaitForSeconds(0.5f);
+        UpdateLeaderboardRpc();
     }
 
     private void HandleStateChanged(MatchState oldState, MatchState newState)
@@ -69,17 +111,26 @@ public class NetworkMatchManager : NetworkBehaviour
         {
             countdownTimer.Value -= Time.deltaTime;
             int currentSecond = Mathf.CeilToInt(countdownTimer.Value);
+            
             if (currentSecond != lastCountdownSecond && currentSecond > 0)
             {
                 lastCountdownSecond = currentSecond;
-                TriggerCountdownTickRpc(currentSecond);
+                TriggerAnnouncerMessageRpc(currentSecond.ToString(), 0.8f);
             }
             if (countdownTimer.Value <= 0) StartActiveGame();
         }
         else if (currentState.Value == MatchState.Active)
         {
-            matchTimer.Value -= Time.deltaTime;
-            if (matchTimer.Value <= 0) EndMatch();
+            // --- THE FIX: Only run if the match isn't currently ending ---
+            if (!isMatchEnding)
+            {
+                matchTimer.Value -= Time.deltaTime;
+                if (matchTimer.Value <= 0) 
+                {
+                    isMatchEnding = true; // Lock it!
+                    EndMatch();
+                }
+            }
         }
     }
 
@@ -87,17 +138,75 @@ public class NetworkMatchManager : NetworkBehaviour
     // BOOTH & MATCH FLOW
     // ==========================================
 
+    private void AssignBoothsToPlayers()
+    {
+        if (!IsServer) return;
+
+        GameObject[] boothObjects = GameObject.FindGameObjectsWithTag("PlayerBooth");
+        foreach (var obj in boothObjects)
+        {
+            if (obj.TryGetComponent(out PlayerBooth booth))
+            {
+                booth.assignedClientId.Value = 999; 
+            }
+        }
+
+        int boothIndex = 0;
+        foreach (var clientId in NetworkManager.Singleton.ConnectedClientsIds)
+        {
+            if (boothIndex >= boothObjects.Length) break;
+            if (boothObjects[boothIndex].TryGetComponent(out PlayerBooth booth))
+            {
+                booth.assignedClientId.Value = clientId;
+                if (colorSets.Length > 0)
+                {
+                    int safeIndex = (int)(clientId % (ulong)colorSets.Length);
+                    booth.assignedColor.Value = colorSets[safeIndex].playerColor;
+                }
+            }
+            boothIndex++;
+        }
+    }
+
+    private void ResetBooths()
+    {
+        GameObject[] boothObjects = GameObject.FindGameObjectsWithTag("PlayerBooth");
+        foreach (var obj in boothObjects)
+        {
+            if (obj.TryGetComponent(out PlayerBooth booth)) booth.assignedClientId.Value = 999;
+        }
+    }
+
     public void SetPlayerReady(ulong clientId, bool isReady)
     {
         if (!IsServer) return;
-        if (isReady) readyPlayerIds.Add(clientId);
+
+        if (isReady)
+        {
+            readyPlayerIds.Add(clientId);
+            if (currentState.Value == MatchState.WaitingForPositions && !isFirstArrivalAwarded)
+            {
+                isFirstArrivalAwarded = true;
+                AwardArrivalBonus(clientId);
+            }
+        }
         else readyPlayerIds.Remove(clientId);
 
         playersReadyCount.Value = readyPlayerIds.Count;
-
         if (currentState.Value == MatchState.WaitingForPositions && readyPlayerIds.Count >= NetworkManager.ConnectedClients.Count)
         {
             StartCountdown();
+        }
+    }
+
+    private void AwardArrivalBonus(ulong clientId)
+    {
+        if (NetworkManager.Singleton.ConnectedClients.TryGetValue(clientId, out var client))
+        {
+            if (client.PlayerObject != null && client.PlayerObject.TryGetComponent(out NetworkPlayerScore scoreSystem))
+            {
+                scoreSystem.AddPoints(firstArrivalBonusPoints);
+            }
         }
     }
 
@@ -113,26 +222,83 @@ public class NetworkMatchManager : NetworkBehaviour
     private void StartWaitingPhase()
     {
         if (currentState.Value != MatchState.Lobby) return;
+        
+        isMatchEnding = false; // --- THE FIX: Reset the lock for the new match ---
+        
         readyPlayerIds.Clear();
         playersReadyCount.Value = 0;
-        currentState.Value = MatchState.WaitingForPositions;
-    }
+        isFirstArrivalAwarded = false; 
 
+        AssignBoothsToPlayers(); 
+        currentState.Value = MatchState.WaitingForPositions;
+
+        UpdateLeaderboardRpc();
+        TriggerAnnouncerSequenceRpc("GET,TO,YOUR,BOOTHS!", 0.4f);
+    }
     private void StartCountdown()
     {
         countdownTimer.Value = 3f;
         lastCountdownSecond = 3;
         currentState.Value = MatchState.Countdown;
-        TriggerCountdownTickRpc(3);
+        
+        TriggerAnnouncerMessageRpc("3", 0.8f);
     }
 
     private void StartActiveGame()
     {
         matchTimer.Value = matchDurationSetting.Value;
         currentState.Value = MatchState.Active;
+        
+        TriggerAnnouncerMessageRpc("GO!", 1.5f);
     }
 
-    private void EndMatch() => currentState.Value = MatchState.Lobby;
+    private void EndMatch() 
+    {
+        var allScores = FindObjectsByType<NetworkPlayerScore>(FindObjectsSortMode.None);
+        foreach(var score in allScores)
+        {
+            score.IncrementGamesPlayed();
+        }
+
+        TriggerAnnouncerMessageRpc("THAT'S ALL FOLKS!", 3f);
+        UpdateLeaderboardRpc();
+
+        StartCoroutine(EndMatchRoutine());
+    }
+
+    private IEnumerator EndMatchRoutine()
+    {
+        yield return new WaitForSeconds(3f);
+        
+        ResetBooths();
+        currentState.Value = MatchState.Lobby;
+    }
+
+    // ==========================================
+    // RPCs (Announcer & Leaderboard)
+    // ==========================================
+
+    [Rpc(SendTo.Everyone)]
+    private void TriggerAnnouncerSequenceRpc(string commaSeparatedWords, float delay) 
+    {
+        if(announcer != null) 
+        {
+            string[] words = commaSeparatedWords.Split(',');
+            announcer.AnnounceSequence(words, delay);
+        }
+    }
+
+    [Rpc(SendTo.Everyone)]
+    private void TriggerAnnouncerMessageRpc(string message, float duration) 
+    {
+        if(announcer != null) announcer.ShowMessage(message, duration);
+    }
+
+    [Rpc(SendTo.Everyone)]
+    private void UpdateLeaderboardRpc()
+    {
+        if(leaderboard != null) leaderboard.RefreshScores();
+    }
 
     // ==========================================
     // SETTINGS RPCs
@@ -155,7 +321,4 @@ public class NetworkMatchManager : NetworkBehaviour
 
     [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Everyone)]
     public void RequestSetSpawnRateRpc(float newRate) { if (currentState.Value == MatchState.Lobby) spawnIntervalSetting.Value = newRate; }
-
-    [Rpc(SendTo.Everyone)]
-    private void TriggerCountdownTickRpc(int second) => OnCountdownTick?.Invoke(second);
 }

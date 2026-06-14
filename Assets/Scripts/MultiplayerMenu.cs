@@ -7,7 +7,7 @@ public class MultiplayerMenu : NetworkBehaviour
 {
     [Header("UI References")]
     [SerializeField] private GameObject menuUI;
-    [Tooltip("Players enter the Host's IPv4 address here. Leave blank to use localhost.")]
+    [Tooltip("Players enter the IP address here to Host or Join. Leave blank to use localhost.")]
     [SerializeField] private TMP_InputField ipAddressInput; 
     [SerializeField] private TMP_Text statusText;
     
@@ -18,22 +18,33 @@ public class MultiplayerMenu : NetworkBehaviour
     [SerializeField] private string defaultIP = "127.0.0.1"; // Localhost
     [SerializeField] private ushort port = 7777; // Default Netcode port
 
+    // --- NEW: Helper method to grab the IP from the input, or fallback to default ---
+    private string GetIpAddress()
+    {
+        if (ipAddressInput != null && !string.IsNullOrWhiteSpace(ipAddressInput.text))
+        {
+            return ipAddressInput.text.Trim();
+        }
+        return defaultIP;
+    }
+
     public void StartHost()
     {
-        SetStatus("Starting local host...");
+        string ipAddress = GetIpAddress();
+        SetStatus("Starting local host on " + ipAddress + "...");
 
         // Grab the transport and configure it for local UDP
         UnityTransport transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
-        transport.SetConnectionData(defaultIP, port);
+        transport.SetConnectionData(ipAddress, port);
         transport.UseWebSockets = false; // Must be false for local/desktop testing
 
         bool started = NetworkManager.Singleton.StartHost();
 
         if (started)
         {
-            if (inGameIpText != null) inGameIpText.text = "Hosting on: " + defaultIP; 
+            if (inGameIpText != null) inGameIpText.text = "Hosting on: " + ipAddress; 
 
-            SetStatus("Host started on " + defaultIP + ":" + port);
+            SetStatus("Host started on " + ipAddress + ":" + port);
             HideMenu();
         }
         else
@@ -44,14 +55,8 @@ public class MultiplayerMenu : NetworkBehaviour
 
     public void StartClient()
     {
-        SetStatus("Joining local session...");
-
-        // Use the IP typed in the input, or default to 127.0.0.1 if left blank
-        string ipAddress = defaultIP;
-        if (ipAddressInput != null && !string.IsNullOrWhiteSpace(ipAddressInput.text))
-        {
-            ipAddress = ipAddressInput.text.Trim();
-        }
+        string ipAddress = GetIpAddress();
+        SetStatus("Joining session at " + ipAddress + "...");
 
         // Configure transport with the target IP
         UnityTransport transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
@@ -75,17 +80,18 @@ public class MultiplayerMenu : NetworkBehaviour
 
     public void StartServer()
     {
-        SetStatus("Starting dedicated local server...");
+        string ipAddress = GetIpAddress();
+        SetStatus("Starting dedicated server on " + ipAddress + "...");
         
         UnityTransport transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
-        transport.SetConnectionData(defaultIP, port);
+        transport.SetConnectionData(ipAddress, port);
         transport.UseWebSockets = false;
 
         bool started = NetworkManager.Singleton.StartServer();
         
         if (started)
         {
-            SetStatus("Server started on " + defaultIP + ":" + port);
+            SetStatus("Server started on " + ipAddress + ":" + port);
             HideMenu();
         }
         else

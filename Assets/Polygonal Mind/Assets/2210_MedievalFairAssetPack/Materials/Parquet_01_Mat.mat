@@ -105,7 +105,7 @@ Material:
     - _FilterMode: 1
     - _LightMode: 1
     - _ReceiveShadowsMode: 0
-    - _ResolutionLimit: 256
+    - _ResolutionLimit: 54
     - _SnapMode: 0
     - _SnapsPerUnit: 32
     - _WrapMode: 1

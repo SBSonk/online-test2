@@ -309,6 +309,16 @@ MonoBehaviour:
   damage: 25
   knockbackForce: 1
   upwardKnockback: 2
+  isMagnetic:
+    UpdateTraits:
+      MinSecondsBetweenUpdates: 0
+      MaxSecondsBetweenUpdates: 0
+    m_InternalValue: 0
+  magnetRadius: 5
+  magnetForce: 40
+  targetLayer:
+    serializedVersion: 2
+    m_Bits: 128
   syncedBalloonColor:
     UpdateTraits:
       MinSecondsBetweenUpdates: 0

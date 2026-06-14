@@ -14,36 +14,72 @@ public class BalloonProjectile : NetworkBehaviour
     public float knockbackForce = 25f; 
     public float upwardKnockback = 8f; 
 
+    [Header("Magnetism")]
+    public NetworkVariable<bool> isMagnetic = new NetworkVariable<bool>(false);
+    public float magnetRadius = 8f;
+    public float magnetForce = 20f;
+    public LayerMask targetLayer; // Make sure to set this to your Target Layer in Inspector!
+
     public NetworkVariable<Color> syncedBalloonColor = new NetworkVariable<Color>();
     public NetworkVariable<Color> syncedParticleColor = new NetworkVariable<Color>();
     
     private bool hasPopped = false;
+    private Rigidbody rb;
 
     public override void OnNetworkSpawn()
     {
+        rb = GetComponent<Rigidbody>();
+        
         if (IsServer) Invoke(nameof(DestroyBalloon), autoDestroyTime);
         
         syncedBalloonColor.OnValueChanged += (oldVal, newVal) => ApplyVisuals();
         ApplyVisuals(); 
 
-        // --- NEW: Ignore collision with the person who threw it! ---
         IgnoreOwnerCollisions();
+    }
+
+    // --- NEW: Physics Homing Logic ---
+    private void FixedUpdate()
+    {
+        // Only the server calculates physics movement. 
+        // This keeps the movement synced for all clients.
+        if (!IsServer || !isMagnetic.Value || hasPopped) return;
+
+        // Find targets in range
+        Collider[] hits = Physics.OverlapSphere(transform.position, magnetRadius, targetLayer);
+        
+        Transform closestTarget = null;
+        float closestDistance = Mathf.Infinity;
+
+        foreach (var hit in hits)
+        {
+            // We check for CarnivalTarget (or whatever component your targets use)
+            if (hit.TryGetComponent(out CarnivalTarget target))
+            {
+                float dist = Vector3.Distance(transform.position, hit.transform.position);
+                if (dist < closestDistance)
+                {
+                    closestDistance = dist;
+                    closestTarget = hit.transform;
+                }
+            }
+        }
+
+        // Apply force toward the closest target
+        if (closestTarget != null)
+        {
+            Vector3 direction = (closestTarget.position - transform.position).normalized;
+            rb.AddForce(direction * magnetForce, ForceMode.Acceleration);
+        }
     }
 
     private void IgnoreOwnerCollisions()
     {
-        // Find the player object that belongs to whoever spawned this balloon
         NetworkObject ownerPlayer = NetworkManager.Singleton.SpawnManager.GetPlayerNetworkObject(OwnerClientId);
-        
         if (ownerPlayer != null)
         {
-            // Get all colliders on the balloon (usually just one, but safe to grab all)
             Collider[] balloonColliders = GetComponentsInChildren<Collider>();
-            
-            // Get all colliders on the player (capsule, hands, etc.)
             Collider[] playerColliders = ownerPlayer.GetComponentsInChildren<Collider>();
-
-            // Tell Unity's physics engine that these specific colliders are ghosts to each other
             foreach (Collider bCol in balloonColliders)
             {
                 foreach (Collider pCol in playerColliders)
@@ -60,9 +96,7 @@ public class BalloonProjectile : NetworkBehaviour
         {
             balloonRenderer.material.color = syncedBalloonColor.Value;
             if (balloonRenderer.material.HasProperty("_BaseColor"))
-            {
                 balloonRenderer.material.SetColor("_BaseColor", syncedBalloonColor.Value);
-            }
         }
             
         if (popParticles != null)
@@ -79,17 +113,6 @@ public class BalloonProjectile : NetworkBehaviour
 
         TriggerPopClientRpc();
 
-        // --- THE MISSING PIECE: Shooting Gallery Targets ---
-        if (collision.gameObject.TryGetComponent(out CarnivalTarget galleryTarget))
-        {
-            // Tell the target it was hit, and pass the ID of the player who threw the balloon
-            galleryTarget.ProcessHit(OwnerClientId);
-            
-            // Optional: You can trigger your hit marker here too!
-            NotifyHitRpc(); 
-        }
-        // ---------------------------------------------------
-
         if (collision.gameObject.TryGetComponent(out NetworkHasHealth health))
         {
             health.TakeDamage((int)damage, OwnerClientId);
@@ -104,8 +127,6 @@ public class BalloonProjectile : NetworkBehaviour
             Vector3 finalForce = (knockbackDir * knockbackForce) + (Vector3.up * upwardKnockback);
 
             playerMove.TakeBalloonHit(finalForce, syncedBalloonColor.Value);
-            
-            // Note: I added a hit marker call here too so you know when you successfully stun someone!
             NotifyHitRpc();
         }
 

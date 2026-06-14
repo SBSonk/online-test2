@@ -16,7 +16,10 @@ public class HUDManager : MonoBehaviour
     [Tooltip("A prefab containing a single TextMeshProUGUI component.")]
     public GameObject scoreboardTextPrefab; 
     
-    // We pool the text objects here so we don't Instantiate/Destroy constantly
+    [Header("Scoreboard Layout Sizing")]
+    public float localPlayerFontSize = 32f;
+    public float opponentFontSize = 22f;
+    
     private List<TextMeshProUGUI> spawnedScoreTexts = new List<TextMeshProUGUI>();
 
     [Header("Player Health (3 Lives)")]
@@ -38,7 +41,6 @@ public class HUDManager : MonoBehaviour
         if (hitmarker != null) hitmarker.SetActive(false);
         if (chargeBarFill != null) chargeBarFill.fillAmount = 0f;
 
-        // Hide any leftover scoreboard texts on initialization
         foreach (var textItem in spawnedScoreTexts)
         {
             textItem.gameObject.SetActive(false);
@@ -47,7 +49,6 @@ public class HUDManager : MonoBehaviour
 
     private void OnEnable()
     {
-        // Listen for state changes so we can update UI text immediately when the state shifts
         if (NetworkMatchManager.Instance != null)
         {
             NetworkMatchManager.Instance.currentState.OnValueChanged += (oldState, newState) => UpdateStateUI();
@@ -68,60 +69,51 @@ public class HUDManager : MonoBehaviour
 
         var state = NetworkMatchManager.Instance.currentState.Value;
 
+        // Only update the HUD timer if the match is actively running
         if (state == NetworkMatchManager.MatchState.Active)
         {
             UpdateTimer(NetworkMatchManager.Instance.matchTimer.Value);
         }
-        else if (state == NetworkMatchManager.MatchState.Countdown)
-        {
-            // Show the countdown (3, 2, 1...)
-            matchTimerText.text = $"STARTING: {Mathf.CeilToInt(NetworkMatchManager.Instance.countdownTimer.Value)}";
-        }
         
-        // Update charge bar
         if (balloonShooter != null && chargeBarFill != null)
         {
             chargeBarFill.fillAmount = balloonShooter.GetChargePercentage();
         }
     }
 
-    // New helper to handle the big status updates
     private void UpdateStateUI()
     {
         var state = NetworkMatchManager.Instance.currentState.Value;
 
-        if (state == NetworkMatchManager.MatchState.WaitingForPositions)
-        {
-            matchTimerText.text = "GET TO YOUR BOOTHS!";
-        }
-        else if (state == NetworkMatchManager.MatchState.Lobby)
+        if (state == NetworkMatchManager.MatchState.Lobby)
         {
             matchTimerText.text = "LOBBY";
         }
+        else if (state != NetworkMatchManager.MatchState.Active)
+        {
+            // Clear the text during WaitingForPositions and Countdown. 
+            // The GameAnnouncer handles the visuals for these phases now!
+            matchTimerText.text = ""; 
+        }
 
-        // Refresh scoreboard to show/hide appropriately based on state
         RefreshScoreboardDisplay();
     }
 
-    // --- REWORKED: Dynamic Instantiation & Color Tinting ---
+    // --- Real-time Sort & Conditional Text Scaling ---
     public void RefreshScoreboardDisplay()
     {
         if (scoreboardContainer == null || scoreboardTextPrefab == null) return;
 
+        // 1. Gather all scores active across the network
         NetworkPlayerScore[] allPlayerScores = Object.FindObjectsByType<NetworkPlayerScore>(FindObjectsSortMode.None);
-        
-        NetworkPlayerScore localPlayer = null;
-        List<NetworkPlayerScore> opponents = new List<NetworkPlayerScore>();
+        List<NetworkPlayerScore> sortedScores = new List<NetworkPlayerScore>(allPlayerScores);
 
-        foreach (var pScore in allPlayerScores)
-        {
-            if (pScore.IsOwner) localPlayer = pScore;
-            else opponents.Add(pScore);
-        }
+        // 2. Sort list by highest score first (Descending order)
+        sortedScores.Sort((a, b) => b.currentScore.Value.CompareTo(a.currentScore.Value));
 
-        int totalPlayers = (localPlayer != null ? 1 : 0) + opponents.Count;
+        int totalPlayers = sortedScores.Count;
 
-        // 1. Ensure we have enough Text objects spawned in our pool
+        // 3. Maintain dynamic UI text pooling
         while (spawnedScoreTexts.Count < totalPlayers)
         {
             GameObject newObj = Instantiate(scoreboardTextPrefab, scoreboardContainer);
@@ -131,38 +123,29 @@ public class HUDManager : MonoBehaviour
             }
         }
 
-        // 2. Hide all texts initially
-        foreach (var textItem in spawnedScoreTexts)
+        // 4. Update elements matching sorted order indices
+        for (int i = 0; i < spawnedScoreTexts.Count; i++)
         {
-            textItem.gameObject.SetActive(false);
-        }
-
-        int visualSlotIndex = 0;
-
-        // 3. Setup Local Player (Always at the top)
-        if (localPlayer != null)
-        {
-            SetupScoreSlot(spawnedScoreTexts[visualSlotIndex], localPlayer, true);
-            visualSlotIndex++;
-        }
-
-        // 4. Setup Opponents
-        for (int i = 0; i < opponents.Count; i++)
-        {
-            SetupScoreSlot(spawnedScoreTexts[visualSlotIndex], opponents[i], false);
-            visualSlotIndex++;
+            if (i < totalPlayers)
+            {
+                SetupScoreSlot(spawnedScoreTexts[i], sortedScores[i]);
+            }
+            else
+            {
+                // Deactivate residual layout objects if a player drops out mid-game
+                spawnedScoreTexts[i].gameObject.SetActive(false);
+            }
         }
     }
 
-    private void SetupScoreSlot(TextMeshProUGUI slotText, NetworkPlayerScore playerScore, bool isLocal)
+    private void SetupScoreSlot(TextMeshProUGUI slotText, NetworkPlayerScore playerScore)
     {
         slotText.gameObject.SetActive(true);
+        bool isLocal = playerScore.IsOwner;
 
-        // Set the text
-        string suffix = isLocal ? "(You)" : $"Player {playerScore.OwnerClientId + 1}";
-        slotText.text = $"{playerScore.currentScore.Value.ToString("D4")} {suffix}";
+        slotText.fontSize = isLocal ? localPlayerFontSize : opponentFontSize;
+        slotText.text = isLocal ? $"{playerScore.currentScore.Value.ToString("D4")} - YOU" : $"{playerScore.currentScore.Value.ToString("D4")}";
 
-        // Grab the player's color manager and tint the text!
         if (playerScore.TryGetComponent(out PlayerColorManager colorManager))
         {
             int pIndex = colorManager.colorIndex.Value;
@@ -176,7 +159,6 @@ public class HUDManager : MonoBehaviour
         }
     }
 
-    // ... (Keep your UpdateTimer, UpdateLives, ShowHitMarker, and HitAnimation methods exactly the same) ...
     public void UpdateTimer(float timeRemaining)
     {
         if (matchTimerText != null)

@@ -484,7 +484,8 @@ MonoBehaviour:
   groundLayer:
     serializedVersion: 2
     m_Bits: 512
-  walkTime: 0.5
+  walkTime: 0.75
+  sprintTime: 0.4
   leftFootSrc: {fileID: 2553334907777619864}
   rightFootSrc: {fileID: 1549344535440762837}
   floorTypes:
@@ -1069,6 +1070,7 @@ GameObject:
   - component: {fileID: 8184713279370266932}
   - component: {fileID: -3801474900841889667}
   - component: {fileID: 9161064377839959757}
+  - component: {fileID: -1972318574577896351}
   m_Layer: 6
   m_Name: NetworkPlayer
   m_TagString: Untagged
@@ -1212,7 +1214,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Unity.Netcode.Runtime::Unity.Netcode.NetworkObject
-  GlobalObjectIdHash: 1008526252
+  GlobalObjectIdHash: 2883407401
   InScenePlacedSourceGlobalObjectIdHash: 1008526252
   DeferredDespawnTick: 0
   Ownership: 1
@@ -1261,7 +1263,7 @@ MonoBehaviour:
   SyncScaleX: 0
   SyncScaleY: 0
   SyncScaleZ: 0
-  PositionThreshold: 0.05
+  PositionThreshold: 0.005
   RotAngleThreshold: 1
   ScaleThreshold: 0.01
   UseQuaternionSynchronization: 0
@@ -1302,7 +1304,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::NetworkPlayerMovement
   ShowTopMostFoldoutHeaderGroup: 1
   playerCamera: {fileID: 0}
-  maxMoveSpeed: 6
+  maxMoveSpeed: 5
+  useToggleSprint: 1
+  sprintSpeedMultiplier: 1.5
+  sprintBuildUpRate: 5
   acceleration: 10
   jumpForce: 0
   rideHeight: 1
@@ -1312,9 +1317,11 @@ MonoBehaviour:
   groundLayer:
     serializedVersion: 2
     m_Bits: 512
+  boothSnapSpeed: 5
   footstepManager: {fileID: 5682144394080269137}
   handAnimator: {fileID: -3801474900841889667}
   walkShakeProfile: {fileID: 11400000, guid: a6c7f41f8b079e44888ead664d64fb7b, type: 2}
+  runShakeProfile: {fileID: 11400000, guid: 87330bb66f7be2e48aaef6a065e57a25, type: 2}
   hitShakeProfile: {fileID: 11400000, guid: 3c0aba29e78b94942ae949d2def54ec5, type: 2}
   playerState: {fileID: 9161064377839959757}
   balloonShooter: {fileID: -825304004673381689}
@@ -1358,7 +1365,7 @@ MonoBehaviour:
   - {fileID: 8312862786618672703}
   colorSets:
   - themeName: The Firestarter
-    playerColor: {r: 0.7764706, g: 0.15686275, b: 0.15686275, a: 0}
+    playerColor: {r: 0.7764706, g: 0.15686275, b: 0.15686275, a: 1}
     balloonShades:
     - balloonColor: {r: 0.8980392, g: 0.22352941, b: 0.20784314, a: 0}
       particleColor: {r: 4, g: 0.72, b: 0, a: 1}
@@ -1367,7 +1374,7 @@ MonoBehaviour:
     - balloonColor: {r: 1, g: 0.5411765, b: 0.5019608, a: 0}
       particleColor: {r: 4, g: 0.72, b: 0, a: 1}
   - themeName: The Splash
-    playerColor: {r: 0.08235294, g: 0.39607844, b: 0.7529412, a: 0}
+    playerColor: {r: 0.08235294, g: 0.39607844, b: 0.7529412, a: 1}
     balloonShades:
     - balloonColor: {r: 0.12941177, g: 0.5882353, b: 0.9529412, a: 0}
       particleColor: {r: 0, g: 3.592157, b: 4, a: 1}
@@ -1376,7 +1383,7 @@ MonoBehaviour:
     - balloonColor: {r: 0.5058824, g: 0.83137256, b: 0.98039216, a: 0}
       particleColor: {r: 0, g: 3.592157, b: 4, a: 1}
   - themeName: The Toxic
-    playerColor: {r: 0.18039216, g: 0.49019608, b: 0.19607843, a: 0}
+    playerColor: {r: 0.18039216, g: 0.49019608, b: 0.19607843, a: 1}
     balloonShades:
     - balloonColor: {r: 0.29803923, g: 0.6862745, b: 0.3137255, a: 0}
       particleColor: {r: 0.71, g: 5.34, b: 0.3, a: 1}
@@ -1385,7 +1392,7 @@ MonoBehaviour:
     - balloonColor: {r: 0.64705884, g: 0.8392157, b: 0.654902, a: 0}
       particleColor: {r: 0.71, g: 5.34, b: 0.3, a: 1}
   - themeName: The Spark
-    playerColor: {r: 1, g: 0.56078434, b: 0, a: 0}
+    playerColor: {r: 1, g: 0.56078434, b: 0, a: 1}
     balloonShades:
     - balloonColor: {r: 0.9843137, g: 0.7529412, b: 0.1764706, a: 0}
       particleColor: {r: 4, g: 4, b: 0.8, a: 0}
@@ -1419,6 +1426,7 @@ MonoBehaviour:
   colorManager: {fileID: 211856287403497843}
   handAnimator: {fileID: -3801474900841889667}
   playerInteract: {fileID: 2490731709717071326}
+  playerMovement: {fileID: 9016928227875231833}
   throwShakeProfile: {fileID: 11400000, guid: 22f07fd603d86c644b5a833d02615769, type: 2}
   currentShadeIndex: 0
   minThrowForce: 10
@@ -1427,6 +1435,7 @@ MonoBehaviour:
   upwardThrowBias: 4
   throwCooldown: 0.65
   windupTime: 0.25
+  throwAnimationDelay: 0.25
   trajectoryLine: {fileID: 2179224702495796555}
   maxTrajectoryDistance: 10
   collisionLayer:
@@ -1434,6 +1443,22 @@ MonoBehaviour:
     m_Bits: 512
   trajectoryResolution: 15
   trajectoryTimeStep: 0.2
+  rapidFireTimer: 0
+  magnetTimer: 0
+  clusterShotsRemaining: 0
+  butterFingersTimer: 0
+  butterFingersWaveSpeed: 4
+  leadBalloonsRemaining: 0
+  isPreparingThrowNet:
+    UpdateTraits:
+      MinSecondsBetweenUpdates: 0
+      MaxSecondsBetweenUpdates: 0
+    m_InternalValue: 0
+  syncedShadeIndex:
+    UpdateTraits:
+      MinSecondsBetweenUpdates: 0
+      MaxSecondsBetweenUpdates: 0
+    m_InternalValue: 0
   isWindingUp: 0
   isCharging: 0
   currentChargeTime: 0
@@ -1489,7 +1514,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: '::'
   shooter: {fileID: -825304004673381689}
   viewmodelVisuals: {fileID: 8643092627074585831}
-  reloadTime: 0.5
+  appearDuration: 0.15
 --- !u!114 &8184713279370266932
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1558,6 +1583,24 @@ MonoBehaviour:
       MinSecondsBetweenUpdates: 0
       MaxSecondsBetweenUpdates: 0
     m_InternalValue: 0
+--- !u!114 &-1972318574577896351
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6628507149264979473}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bc8ea50a0cf637d4195158cc1e2a981f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::NetworkPlayerScore
+  ShowTopMostFoldoutHeaderGroup: 1
+  currentScore:
+    UpdateTraits:
+      MinSecondsBetweenUpdates: 0
+      MaxSecondsBetweenUpdates: 0
+    m_InternalValue: 0
 --- !u!1001 &807164913544166068
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -1580,27 +1623,27 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 2325348402245839922, guid: 74a4ad8b99f3e7746b2138a9a8ddbaa0, type: 3}
       propertyPath: m_LocalScale.x
-      value: 0.0066666664
+      value: 0.0038971999
       objectReference: {fileID: 0}
     - target: {fileID: 2325348402245839922, guid: 74a4ad8b99f3e7746b2138a9a8ddbaa0, type: 3}
       propertyPath: m_LocalScale.y
-      value: 0.0066666636
+      value: 0.0038971982
       objectReference: {fileID: 0}
     - target: {fileID: 2325348402245839922, guid: 74a4ad8b99f3e7746b2138a9a8ddbaa0, type: 3}
       propertyPath: m_LocalScale.z
-      value: 0.0066666636
+      value: 0.0038971982
       objectReference: {fileID: 0}
     - target: {fileID: 2325348402245839922, guid: 74a4ad8b99f3e7746b2138a9a8ddbaa0, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 0
+      value: 0.000371
       objectReference: {fileID: 0}
     - target: {fileID: 2325348402245839922, guid: 74a4ad8b99f3e7746b2138a9a8ddbaa0, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 0
+      value: 0.000965
       objectReference: {fileID: 0}
     - target: {fileID: 2325348402245839922, guid: 74a4ad8b99f3e7746b2138a9a8ddbaa0, type: 3}
       propertyPath: m_LocalPosition.z
-      value: 0
+      value: -0.000104
       objectReference: {fileID: 0}
     - target: {fileID: 2325348402245839922, guid: 74a4ad8b99f3e7746b2138a9a8ddbaa0, type: 3}
       propertyPath: m_LocalRotation.w

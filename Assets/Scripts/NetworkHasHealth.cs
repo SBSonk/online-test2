@@ -10,25 +10,18 @@ public class NetworkHasHealth : NetworkBehaviour
     public UnityEvent<int> onHealthChange;
     public UnityEvent onDeath;
 
-    [Header("Visuals")]
-    public DamagePopup damagePopupPrefab;
-    public Transform popupSpawnPoint;
-
     public ulong lastAttackerId;
 
     public override void OnNetworkSpawn()
     {
         base.OnNetworkSpawn();
-
         health.OnValueChanged += HandleHealthChange;
-
         if (IsServer) InitializeSpawn();
     }
 
     public override void OnNetworkDespawn()
     {
         base.OnNetworkDespawn();
-
         health.OnValueChanged -= HandleHealthChange;
     }
 
@@ -48,25 +41,11 @@ public class NetworkHasHealth : NetworkBehaviour
         
         lastAttackerId = attackerId; // Remember who hit us!
         health.Value -= damage;
-        
-        // Trigger the visual damage numbers on all clients
-        ShowDamagePopupClientRpc(damage);
 
         if (health.Value <= 0)
         {
-            HandleDeath(); // FIXED: Changed from Die() to your HandleDeath()
+            HandleDeath(); 
         }
-    }
-
-    [ClientRpc]
-    private void ShowDamagePopupClientRpc(int damageAmount)
-    {
-        if (damagePopupPrefab == null) return; 
-
-        Vector3 spawnPos = popupSpawnPoint != null ? popupSpawnPoint.position : transform.position;
-
-        DamagePopup popup = Instantiate(damagePopupPrefab, spawnPos, Quaternion.identity);
-        popup.Initialize(damageAmount);
     }
 
     public void InitializeSpawn()

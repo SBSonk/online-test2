@@ -29,7 +29,7 @@ Material:
   - _FILTERMODE_POINT
   - _LIGHTMODE_TEXELLIT
   - _RECEIVESHADOWSMODE_OFF
-  - _SNAPMODE_VIEW
+  - _SNAPMODE_OBJECT
   - _USE_FLAT_SHADING
   - _WRAPMODE_REPEAT
   m_InvalidKeywords:
@@ -118,8 +118,8 @@ Material:
     - _LightMode: 1
     - _ReceiveShadowsMode: 1
     - _ResolutionLimit: 64
-    - _SnapMode: 2
-    - _SnapsPerUnit: 128
+    - _SnapMode: 0
+    - _SnapsPerUnit: 32
     - _WrapMode: 1
     m_Floats:
     - _AddPrecomputedVelocity: 0

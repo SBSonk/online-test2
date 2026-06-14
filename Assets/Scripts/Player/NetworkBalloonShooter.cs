@@ -2,6 +2,9 @@ using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.Events;
 using FirstGearGames.SmoothCameraShaker;
+using System.Collections;
+using NaughtyAttributes;
+using System.Collections.Generic;
 
 public class NetworkBalloonShooter : NetworkBehaviour
 {
@@ -12,6 +15,7 @@ public class NetworkBalloonShooter : NetworkBehaviour
     public PlayerColorManager colorManager; 
     public NetworkHandsAnimator handAnimator; 
     public PlayerInteract playerInteract; 
+    public NetworkPlayerMovement playerMovement; 
 
     [Header("Camera Effects")]
     public ShakeData throwShakeProfile; 
@@ -25,6 +29,12 @@ public class NetworkBalloonShooter : NetworkBehaviour
     public float upwardThrowBias = 2f; 
     public float throwCooldown = 0.65f; 
     public float windupTime = 0.25f; 
+    
+    [Tooltip("How long (in seconds) the game remembers an early click before the cooldown finishes.")]
+    public float inputBufferWindow = 0.25f; 
+    
+    [Tooltip("Delay between releasing the button and the balloon actually spawning to sync with the animation.")]
+    public float throwAnimationDelay = 0.15f; 
 
     [Header("Trajectory Preview")]
     public LineRenderer trajectoryLine;
@@ -33,12 +43,28 @@ public class NetworkBalloonShooter : NetworkBehaviour
     public int trajectoryResolution = 30;
     public float trajectoryTimeStep = 0.1f;
 
+    [Header("Active Powerups")]
+    public float doublePointsTimer = 0f; // Ensure this is here for your Golden Target!
+    public float rapidFireTimer = 0f;
+    public float magnetTimer = 0f;
+    public int clusterShotsRemaining = 0;
+
+    [Header("Active Hazards")]
+    public float butterFingersTimer = 0f;
+    public float butterFingersWaveSpeed = 4f; 
+    public int leadBalloonsRemaining = 0;
+
+    [Header("Multiplayer Visual Sync")]
+    public NetworkVariable<bool> isPreparingThrowNet = new NetworkVariable<bool>(false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
+    public NetworkVariable<int> syncedShadeIndex = new NetworkVariable<int>(0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
+
     [Header("State (Read Only)")]
     public bool isWindingUp = false; 
     public bool isCharging = false;
     public float currentChargeTime = 0f;
     private float windupStartTime = 0f; 
     private float lastThrowTime = -100f; 
+    private float lastClickTime = -100f; // --- NEW: Tracks when the user pressed the button ---
 
     [Header("Events")]
     public UnityEvent OnStartCharge;
@@ -51,42 +77,81 @@ public class NetworkBalloonShooter : NetworkBehaviour
         Cursor.visible = false;
     }
 
-    void Start()
+    public override void OnNetworkSpawn()
     {
+        base.OnNetworkSpawn();
         if (trajectoryLine != null) trajectoryLine.enabled = false;
-        PickNextShade();
+        if (IsOwner) PickNextShade();
     }
 
     public void PickNextShade()
     {
-        currentShadeIndex = Random.Range(0, 1000); 
+        if (IsOwner)
+        {
+            syncedShadeIndex.Value = Random.Range(0, 1000); 
+        }
     }
 
     void Update()
     {
         if (!IsOwner || !cameraTransform || !throwPoint) return;
+
+        bool prep = isWindingUp || isCharging;
+        if (isPreparingThrowNet.Value != prep) 
+        {
+            isPreparingThrowNet.Value = prep;
+        }
+
+        // 1. Tick down timers
+        if (doublePointsTimer > 0) doublePointsTimer -= Time.deltaTime;
+        if (rapidFireTimer > 0) rapidFireTimer -= Time.deltaTime;
+        if (magnetTimer > 0) magnetTimer -= Time.deltaTime;
+        if (butterFingersTimer > 0) butterFingersTimer -= Time.deltaTime; 
+
+        // 2. Update the UI HUD 
+        if (PowerupHUD.Instance != null)
+        {
+            PowerupHUD.Instance.UpdatePowerupDisplay("Rapid Fire", rapidFireTimer, 0, true);
+            PowerupHUD.Instance.UpdatePowerupDisplay("Magnet", magnetTimer, 0, true);
+            PowerupHUD.Instance.UpdatePowerupDisplay("Cluster", 0, clusterShotsRemaining, false);
+            PowerupHUD.Instance.UpdatePowerupDisplay("Lead Balloon", 0, leadBalloonsRemaining, false);
+            PowerupHUD.Instance.UpdatePowerupDisplay("Butter Fingers", butterFingersTimer, 0, true);
+        }
+
+        // 3. Interlocks
+        if ((playerInteract != null && playerInteract.IsHovering()) || 
+            (playerMovement != null && playerMovement.isSprinting))
+        {
+            if (isWindingUp || isCharging) CancelCharge();
+            return;
+        }
+
+        // 4. Standard throw logic
         HandleChargeInput();
     }
 
     private void HandleChargeInput()
     {
-        // Only allow shooting if the state is ACTIVE!
-        if (NetworkMatchManager.Instance != null && NetworkMatchManager.Instance.currentState.Value != NetworkMatchManager.MatchState.Active)
+        float currentCooldown = (rapidFireTimer > 0) ? throwCooldown * 0.25f : throwCooldown;
+        float currentWindup = (rapidFireTimer > 0) ? windupTime * 0.25f : windupTime;
+        float chargeSpeedMultiplier = (rapidFireTimer > 0) ? 3f : 1f;
+
+        // --- NEW: Register the exact moment the button was pressed ---
+        if (Input.GetKeyDown(KeyCode.Mouse0))
         {
-            if (isWindingUp || isCharging) CancelCharge();
-            return;
+            lastClickTime = Time.time;
         }
 
-        if (playerInteract != null && playerInteract.IsHovering())
-        {
-            if (isWindingUp || isCharging) CancelCharge();
-            return;
-        }
+        // --- NEW: Check if the click happened within our buffer window ---
+        bool hasBufferedInput = (Time.time - lastClickTime) <= inputBufferWindow;
 
-        if (Input.GetKeyDown(KeyCode.Mouse0) && Time.time >= lastThrowTime + throwCooldown)
+        // --- NEW: Start windup if we have a buffered click, are STILL holding the button, and cooldown is done ---
+        if (hasBufferedInput && Input.GetKey(KeyCode.Mouse0) && !isWindingUp && !isCharging && Time.time >= lastThrowTime + currentCooldown)
         {
             isWindingUp = true;
             windupStartTime = Time.time;
+            lastClickTime = -100f; // Consume the buffer so it doesn't double-trigger
+            
             if (handAnimator != null) handAnimator.SetThrowWindup(true); 
         }
 
@@ -94,7 +159,7 @@ public class NetworkBalloonShooter : NetworkBehaviour
         {
             if (isWindingUp)
             {
-                if (Time.time >= windupStartTime + windupTime)
+                if (Time.time >= windupStartTime + currentWindup)
                 {
                     isWindingUp = false;
                     isCharging = true;
@@ -106,8 +171,15 @@ public class NetworkBalloonShooter : NetworkBehaviour
             }
             else if (isCharging)
             {
-                currentChargeTime += Time.deltaTime;
-                currentChargeTime = Mathf.Clamp(currentChargeTime, 0, maxChargeTime);
+                if (butterFingersTimer > 0)
+                {
+                    currentChargeTime = Mathf.PingPong(Time.time * butterFingersWaveSpeed, maxChargeTime);
+                }
+                else
+                {
+                    currentChargeTime += (Time.deltaTime * chargeSpeedMultiplier);
+                    currentChargeTime = Mathf.Clamp(currentChargeTime, 0, maxChargeTime);
+                }
                 DrawTrajectory();
             }
         }
@@ -146,23 +218,36 @@ public class NetworkBalloonShooter : NetworkBehaviour
             handAnimator.SetThrowWindup(false);
             handAnimator.TriggerThrowRelease();
         }
-        
         OnThrow?.Invoke(); 
 
         float chargePercent = currentChargeTime / maxChargeTime;
-        float finalForce = Mathf.Lerp(minThrowForce, maxThrowForce, chargePercent);
+        
+        float actualMaxForce = (leadBalloonsRemaining > 0) ? minThrowForce * 0.5f : maxThrowForce;
+        float finalForce = Mathf.Lerp(minThrowForce, actualMaxForce, chargePercent);
 
-        if (throwShakeProfile != null)
-        {
-            CameraShakerHandler.Shake(throwShakeProfile);
-        }
+        if (throwShakeProfile != null) CameraShakerHandler.Shake(throwShakeProfile);
 
         Vector3 throwDirection = cameraTransform.forward;
         throwDirection.y += (upwardThrowBias / finalForce); 
         throwDirection.Normalize();
 
-        Color bColor = Color.white;
-        Color pColor = Color.white;
+        GetCurrentBalloonColors(out Color bColor, out Color pColor);
+
+        bool useCluster = clusterShotsRemaining > 0;
+
+        StartCoroutine(ThrowWithDelayRoutine(throwPoint.position, throwDirection, finalForce, bColor, pColor, magnetTimer > 0, useCluster));
+        
+        if (useCluster) clusterShotsRemaining--;
+        if (leadBalloonsRemaining > 0) leadBalloonsRemaining--; 
+        
+        PickNextShade(); 
+        currentChargeTime = 0f;
+    }
+
+    private void GetCurrentBalloonColors(out Color bColor, out Color pColor)
+    {
+        bColor = Color.white;
+        pColor = Color.white;
 
         if (colorManager != null && colorManager.colorSets.Length > 0)
         {
@@ -177,11 +262,12 @@ public class NetworkBalloonShooter : NetworkBehaviour
                 pColor = specificShade.particleColor;
             }
         }
+    }
 
-        ThrowServerRpc(throwPoint.position, throwDirection, finalForce, bColor, pColor);
-        
-        PickNextShade(); 
-        currentChargeTime = 0f;
+    private IEnumerator ThrowWithDelayRoutine(Vector3 spawnPosition, Vector3 direction, float force, Color bColor, Color pColor, bool isMagnetic, bool isCluster)
+    {
+        yield return new WaitForSeconds(throwAnimationDelay);
+        ThrowServerRpc(spawnPosition, direction, force, bColor, pColor, isMagnetic, isCluster);
     }
 
     private void DrawTrajectory()
@@ -189,7 +275,9 @@ public class NetworkBalloonShooter : NetworkBehaviour
         if (trajectoryLine == null) return;
 
         float chargePercent = currentChargeTime / maxChargeTime;
-        float finalForce = Mathf.Lerp(minThrowForce, maxThrowForce, chargePercent);
+        
+        float actualMaxForce = (leadBalloonsRemaining > 0) ? minThrowForce * 0.5f : maxThrowForce;
+        float finalForce = Mathf.Lerp(minThrowForce, actualMaxForce, chargePercent);
 
         Vector3 throwDirection = cameraTransform.forward;
         throwDirection.y += (upwardThrowBias / finalForce); 
@@ -207,7 +295,6 @@ public class NetworkBalloonShooter : NetworkBehaviour
         {
             float timeOffset = i * trajectoryTimeStep;
             Vector3 nextPosition = throwPoint.position + (initialVelocity * timeOffset) + (0.5f * Physics.gravity * timeOffset * timeOffset);
-
             float distanceToNext = Vector3.Distance(currentPosition, nextPosition);
 
             if (accumulatedDistance + distanceToNext > maxTrajectoryDistance)
@@ -248,20 +335,57 @@ public class NetworkBalloonShooter : NetworkBehaviour
     }
 
     [ServerRpc]
-    public void ThrowServerRpc(Vector3 spawnPosition, Vector3 direction, float force, Color bColor, Color pColor, ServerRpcParams rpcParams = default)
+    public void ThrowServerRpc(Vector3 spawnPosition, Vector3 direction, float force, Color bColor, Color pColor, bool isMagnetic, bool isCluster, ServerRpcParams rpcParams = default)
     {
-        GameObject balloonInstance = Instantiate(balloonPrefab, spawnPosition, Quaternion.LookRotation(direction));
-        NetworkObject networkObj = balloonInstance.GetComponent<NetworkObject>();
+        int balloonsToSpawn = isCluster ? 3 : 1;
         
-        if (balloonInstance.TryGetComponent(out BalloonProjectile proj))
+        List<Collider> spawnedColliders = new List<Collider>();
+
+        for (int i = 0; i < balloonsToSpawn; i++)
         {
-            proj.syncedBalloonColor.Value = bColor;
-            proj.syncedParticleColor.Value = pColor;
+            Vector3 finalDirection = direction;
+            if (isCluster && i > 0)
+            {
+                finalDirection = Quaternion.Euler(Random.Range(-10f, 10f), Random.Range(-15f, 15f), 0) * direction;
+            }
+
+            GameObject balloonInstance = Instantiate(balloonPrefab, spawnPosition, Quaternion.LookRotation(finalDirection));
+            
+            Collider[] newCols = balloonInstance.GetComponentsInChildren<Collider>();
+            
+            foreach (Collider newCol in newCols)
+            {
+                foreach (Collider existing in spawnedColliders)
+                {
+                    Physics.IgnoreCollision(newCol, existing);
+                }
+                spawnedColliders.Add(newCol);
+            }
+
+            NetworkObject networkObj = balloonInstance.GetComponent<NetworkObject>();
+            if (balloonInstance.TryGetComponent(out BalloonProjectile proj))
+            {
+                proj.syncedBalloonColor.Value = bColor;
+                proj.syncedParticleColor.Value = pColor;
+                proj.isMagnetic.Value = isMagnetic; 
+            }
+
+            if (networkObj != null) networkObj.SpawnWithOwnership(rpcParams.Receive.SenderClientId);
+
+            Rigidbody rb = balloonInstance.GetComponent<Rigidbody>();
+            if (rb != null) rb.AddForce(finalDirection * force, ForceMode.Impulse);
         }
+    }
 
-        if (networkObj != null) networkObj.SpawnWithOwnership(rpcParams.Receive.SenderClientId);
+    [ClientRpc]
+    public void ApplyLeadBalloonClientRpc(int amount, ClientRpcParams rpcParams = default)
+    {
+        leadBalloonsRemaining += amount;
+    }
 
-        Rigidbody rb = balloonInstance.GetComponent<Rigidbody>();
-        if (rb != null) rb.AddForce(direction * force, ForceMode.Impulse);
+    [ClientRpc]
+    public void ApplyButterFingersClientRpc(float duration, ClientRpcParams rpcParams = default)
+    {
+        butterFingersTimer += duration;
     }
 }

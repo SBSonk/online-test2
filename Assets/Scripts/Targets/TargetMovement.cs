@@ -1,39 +1,34 @@
-// --- TargetMovement.cs ---
 using Unity.Netcode;
 using UnityEngine;
 
 public class TargetMovement : NetworkBehaviour
 {
-    private float moveSpeed = 3f;
-    private float lifeTime = 10f; // Failsafe to destroy targets that go off-screen
+    public NetworkVariable<float> assignedSpeed = new NetworkVariable<float>(3f);
+    public NetworkVariable<Vector3> travelDirection = new NetworkVariable<Vector3>(Vector3.right);
+    public NetworkVariable<float> maxTravelDistance = new NetworkVariable<float>(50f); 
 
-    public override void OnNetworkSpawn()
-    {
-        if (!IsServer) return;
-        
-        // Pull speed from the match manager settings
-        if (NetworkMatchManager.Instance != null)
-        {
-            moveSpeed = NetworkMatchManager.Instance.targetSpeedSetting.Value;
-        }
-
-        // Destroy after lifetime ends so they don't pile up out of bounds
-        Invoke(nameof(DespawnTarget), lifeTime);
-    }
+    private float distanceTraveled = 0f;
 
     private void Update()
     {
-        if (!IsServer) return;
+        float step = assignedSpeed.Value * Time.deltaTime;
         
-        // Move targets to the right. Adjust Vector3.right based on your arena orientation.
-        transform.Translate(Vector3.right * (moveSpeed * Time.deltaTime));
+        // Move along the track
+        transform.Translate(travelDirection.Value * step, Space.World);
+
+        // Cleanup
+        if (IsServer)
+        {
+            distanceTraveled += step;
+            if (distanceTraveled >= maxTravelDistance.Value)
+            {
+                DespawnTarget();
+            }
+        }
     }
 
     private void DespawnTarget()
     {
-        if (IsSpawned)
-        {
-            GetComponent<NetworkObject>().Despawn(true);
-        }
+        if (IsSpawned) GetComponent<NetworkObject>().Despawn(true);
     }
 }
