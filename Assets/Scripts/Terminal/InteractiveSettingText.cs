@@ -3,16 +3,15 @@ using TMPro;
 using Unity.Netcode;
 
 [RequireComponent(typeof(TextMeshProUGUI))]
-public class InteractableSettingText : Interactable // Inheriting from your base class!
+public class InteractableSettingText : Interactable 
 {
     public enum SettingType
     {
         GameMode,
         MatchDuration,
-        Powerups,
+        PowerupMode, // Replaced Powerups and ChaosLevel
         TargetSpeed,
-        SpawnRate,
-        ChaosLevel
+        SpawnRate
     }
 
     [Header("Configuration")]
@@ -33,7 +32,6 @@ public class InteractableSettingText : Interactable // Inheriting from your base
         myText.color = normalColor;
     }
 
-    // Overriding the base class initialization instead of using Start()
     public override void OnInitialize()
     {
         if (NetworkMatchManager.Instance != null)
@@ -57,7 +55,6 @@ public class InteractableSettingText : Interactable // Inheriting from your base
 
     public override void HoverStart()
     {
-        // Only allow hover color change if we are in the LOBBY state
         if (NetworkMatchManager.Instance != null && 
             NetworkMatchManager.Instance.currentState.Value == NetworkMatchManager.MatchState.Lobby)
         {
@@ -67,8 +64,6 @@ public class InteractableSettingText : Interactable // Inheriting from your base
 
     public override void HoverEnd()
     {
-        // Reset to normalColor, which UpdateDisplay() will automatically correct 
-        // to the correct red/green/white depending on the setting state
         myText.color = normalColor;
     }
 
@@ -76,7 +71,6 @@ public class InteractableSettingText : Interactable // Inheriting from your base
     {
         base.Interact(player); 
 
-        // Only allow interaction if we are in the LOBBY state
         if (NetworkMatchManager.Instance == null || 
             NetworkMatchManager.Instance.currentState.Value != NetworkMatchManager.MatchState.Lobby) 
         {
@@ -109,8 +103,15 @@ public class InteractableSettingText : Interactable // Inheriting from your base
                 netManager.RequestSetDurationRpc(nextDur);
                 break;
 
-            case SettingType.Powerups:
-                netManager.RequestTogglePowerupsRpc();
+            // --- THE FIX: Cycle through Off -> On -> Chaos ---
+            case SettingType.PowerupMode:
+                var currentPwr = netManager.powerupModeSetting.Value;
+                NetworkMatchManager.PowerupMode nextPwr = NetworkMatchManager.PowerupMode.Off;
+                
+                if (currentPwr == NetworkMatchManager.PowerupMode.Off) nextPwr = NetworkMatchManager.PowerupMode.On;
+                else if (currentPwr == NetworkMatchManager.PowerupMode.On) nextPwr = NetworkMatchManager.PowerupMode.Chaos;
+                
+                netManager.RequestSetPowerupModeRpc(nextPwr);
                 break;
 
             case SettingType.TargetSpeed:
@@ -121,14 +122,8 @@ public class InteractableSettingText : Interactable // Inheriting from your base
 
             case SettingType.SpawnRate:
                 float currentRate = netManager.spawnIntervalSetting.Value;
-                // Note: Lower is faster
                 float nextRate = currentRate == 1.0f ? 1.5f : (currentRate == 1.5f ? 2.5f : 1.0f);
-                netManager.RequestSetSpawnRateRpc(nextRate); // Assuming you added this RPC!
-                break;
-
-            case SettingType.ChaosLevel:
-                int currentChaos = netManager.chaosLevelSetting.Value;
-                netManager.RequestSetChaosRpc(currentChaos == 0 ? 1 : 0);
+                netManager.RequestSetSpawnRateRpc(nextRate); 
                 break;
         }
     }
@@ -140,8 +135,7 @@ public class InteractableSettingText : Interactable // Inheriting from your base
 
         // 1. Handle Visibility (Hide Gallery settings if in PvP mode)
         bool isGallerySetting = settingToControl == SettingType.TargetSpeed || 
-                                settingToControl == SettingType.SpawnRate || 
-                                settingToControl == SettingType.ChaosLevel;
+                                settingToControl == SettingType.SpawnRate; // Removed ChaosLevel
 
         if (mode == NetworkMatchManager.GameMode.PvP && isGallerySetting)
         {
@@ -180,10 +174,24 @@ public class InteractableSettingText : Interactable // Inheriting from your base
                 else normalColor = new Color(0.33f, 1f, 0.33f); // Green
                 break;
 
-            case SettingType.Powerups:
-                bool powerupsOn = netManager.powerupsEnabled.Value;
-                valueText = $"POWERUPS: {(powerupsOn ? "ENABLED" : "DISABLED")}";
-                normalColor = powerupsOn ? new Color(0.33f, 1f, 0.33f) : new Color(1f, 0.33f, 0.33f);
+            // --- THE FIX: Format the Text and Colors based on the 3 modes ---
+            case SettingType.PowerupMode:
+                var pMode = netManager.powerupModeSetting.Value;
+                if (pMode == NetworkMatchManager.PowerupMode.Off)
+                {
+                    valueText = "POWERUP MODE: OFF";
+                    normalColor = new Color(1f, 0.33f, 0.33f); // Red
+                }
+                else if (pMode == NetworkMatchManager.PowerupMode.On)
+                {
+                    valueText = "POWERUP MODE: ON";
+                    normalColor = new Color(0.33f, 1f, 0.33f); // Green
+                }
+                else
+                {
+                    valueText = "POWERUP MODE: CHAOS";
+                    normalColor = new Color(1f, 0f, 1f); // Magenta
+                }
                 break;
 
             case SettingType.TargetSpeed:
@@ -207,7 +215,7 @@ public class InteractableSettingText : Interactable // Inheriting from your base
 
             case SettingType.SpawnRate:
                 float rate = netManager.spawnIntervalSetting.Value;
-                if (rate <= 1.0f) // Note: lower time = faster spawn rate
+                if (rate <= 1.0f) 
                 {
                     valueText = "SPAWN RATE: FAST";
                     normalColor = new Color(1f, 0.33f, 0.33f); // Red
@@ -221,19 +229,6 @@ public class InteractableSettingText : Interactable // Inheriting from your base
                 {
                     valueText = "SPAWN RATE: NORMAL";
                     normalColor = Color.white;
-                }
-                break;
-
-            case SettingType.ChaosLevel:
-                if (netManager.chaosLevelSetting.Value == 0)
-                {
-                    valueText = "CHAOS LEVEL: NORMAL";
-                    normalColor = Color.white;
-                }
-                else
-                {
-                    valueText = "CHAOS LEVEL: HIGH";
-                    normalColor = new Color(1f, 0f, 1f); // Magenta
                 }
                 break;
         }

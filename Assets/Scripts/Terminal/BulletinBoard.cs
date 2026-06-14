@@ -36,11 +36,16 @@ public class BulletinBoard : MonoBehaviour
         // 1. Grab all current settings from the network variables
         var mode = NetworkMatchManager.Instance.currentGameMode.Value;
         float duration = NetworkMatchManager.Instance.matchDurationSetting.Value;
-        bool powerups = NetworkMatchManager.Instance.powerupsEnabled.Value;
+        // 1. Grab the new consolidated mode setting
+        var pMode = NetworkMatchManager.Instance.powerupModeSetting.Value;
         
+        // 2. Derive the old variables from the new enum so the rest of your script works perfectly
+        bool powerups = (pMode == NetworkMatchManager.PowerupMode.On || pMode == NetworkMatchManager.PowerupMode.Chaos);
+        int chaos = (pMode == NetworkMatchManager.PowerupMode.Chaos) ? 1 : 0;
+        
+        // 3. Speed and Spawn Rate remain exactly the same
         float speed = NetworkMatchManager.Instance.targetSpeedSetting.Value;
         float spawnRate = NetworkMatchManager.Instance.spawnIntervalSetting.Value;
-        int chaos = NetworkMatchManager.Instance.chaosLevelSetting.Value;
 
         // 2. Build the display text dynamically
         string displayText = "<size=120%><b>--- MATCH RULES ---</b></size>\n\n";

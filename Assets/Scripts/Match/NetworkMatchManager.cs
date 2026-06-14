@@ -10,6 +10,9 @@ public class NetworkMatchManager : NetworkBehaviour
 
     public enum GameMode { ShootingGallery, PvP }
     public enum MatchState { Lobby, WaitingForPositions, Countdown, Active }
+    
+    // --- NEW: Consolidated Powerup Mode Enum ---
+    public enum PowerupMode { Off, On, Chaos }
 
     [Header("Match State (Synced)")]
     public NetworkVariable<MatchState> currentState = new NetworkVariable<MatchState>(MatchState.Lobby);
@@ -29,12 +32,13 @@ public class NetworkMatchManager : NetworkBehaviour
     [Header("Lobby Settings (Synced)")]
     public NetworkVariable<GameMode> currentGameMode = new NetworkVariable<GameMode>(GameMode.ShootingGallery);
     public NetworkVariable<float> matchDurationSetting = new NetworkVariable<float>(60f);
-    public NetworkVariable<bool> powerupsEnabled = new NetworkVariable<bool>(true);
+    
+    // --- THE FIX: Replaced powerups/chaos with one consolidated setting ---
+    public NetworkVariable<PowerupMode> powerupModeSetting = new NetworkVariable<PowerupMode>(PowerupMode.On);
 
     [Header("Spawner Settings (Synced)")]
     public NetworkVariable<float> spawnIntervalSetting = new NetworkVariable<float>(1.5f);
     public NetworkVariable<float> targetSpeedSetting = new NetworkVariable<float>(3.0f);
-    public NetworkVariable<int> chaosLevelSetting = new NetworkVariable<int>(0);
 
     [Header("Booth Assignment")]
     public PlayerColorSet[] colorSets; 
@@ -46,7 +50,6 @@ public class NetworkMatchManager : NetworkBehaviour
     public UnityEvent OnWaitingForPositions;
 
     private bool isMatchEnding = false;
-
     private int lastCountdownSecond = 3;
 
     private void Awake()
@@ -59,13 +62,11 @@ public class NetworkMatchManager : NetworkBehaviour
     {
         currentGameMode.OnValueChanged += (o, n) => OnSettingsChanged?.Invoke();
         matchDurationSetting.OnValueChanged += (o, n) => OnSettingsChanged?.Invoke();
-        powerupsEnabled.OnValueChanged += (o, n) => OnSettingsChanged?.Invoke();
+        powerupModeSetting.OnValueChanged += (o, n) => OnSettingsChanged?.Invoke(); // Hooked up the new mode
         spawnIntervalSetting.OnValueChanged += (o, n) => OnSettingsChanged?.Invoke();
         targetSpeedSetting.OnValueChanged += (o, n) => OnSettingsChanged?.Invoke();
-        chaosLevelSetting.OnValueChanged += (o, n) => OnSettingsChanged?.Invoke();
         currentState.OnValueChanged += HandleStateChanged;
 
-        // --- NEW: Listen for players joining/leaving to update the board ---
         if (IsServer)
         {
             NetworkManager.Singleton.OnClientConnectedCallback += HandleClientConnectionChanged;
@@ -75,7 +76,6 @@ public class NetworkMatchManager : NetworkBehaviour
 
     public override void OnNetworkDespawn()
     {
-        // Clean up memory leaks
         if (IsServer && NetworkManager.Singleton != null)
         {
             NetworkManager.Singleton.OnClientConnectedCallback -= HandleClientConnectionChanged;
@@ -83,13 +83,11 @@ public class NetworkMatchManager : NetworkBehaviour
         }
     }
 
-    // --- NEW: Triggered when anyone joins or leaves ---
     private void HandleClientConnectionChanged(ulong clientId)
     {
         StartCoroutine(DelayedLeaderboardUpdate());
     }
 
-    // A tiny delay ensures the player's networked objects have fully spawned before we read them
     private IEnumerator DelayedLeaderboardUpdate()
     {
         yield return new WaitForSeconds(0.5f);
@@ -121,13 +119,12 @@ public class NetworkMatchManager : NetworkBehaviour
         }
         else if (currentState.Value == MatchState.Active)
         {
-            // --- THE FIX: Only run if the match isn't currently ending ---
             if (!isMatchEnding)
             {
                 matchTimer.Value -= Time.deltaTime;
                 if (matchTimer.Value <= 0) 
                 {
-                    isMatchEnding = true; // Lock it!
+                    isMatchEnding = true;
                     EndMatch();
                 }
             }
@@ -223,7 +220,7 @@ public class NetworkMatchManager : NetworkBehaviour
     {
         if (currentState.Value != MatchState.Lobby) return;
         
-        isMatchEnding = false; // --- THE FIX: Reset the lock for the new match ---
+        isMatchEnding = false; 
         
         readyPlayerIds.Clear();
         playersReadyCount.Value = 0;
@@ -235,12 +232,12 @@ public class NetworkMatchManager : NetworkBehaviour
         UpdateLeaderboardRpc();
         TriggerAnnouncerSequenceRpc("GET,TO,YOUR,BOOTHS!", 0.4f);
     }
+    
     private void StartCountdown()
     {
         countdownTimer.Value = 3f;
         lastCountdownSecond = 3;
         currentState.Value = MatchState.Countdown;
-        
         TriggerAnnouncerMessageRpc("3", 0.8f);
     }
 
@@ -248,17 +245,13 @@ public class NetworkMatchManager : NetworkBehaviour
     {
         matchTimer.Value = matchDurationSetting.Value;
         currentState.Value = MatchState.Active;
-        
         TriggerAnnouncerMessageRpc("GO!", 1.5f);
     }
 
     private void EndMatch() 
     {
         var allScores = FindObjectsByType<NetworkPlayerScore>(FindObjectsSortMode.None);
-        foreach(var score in allScores)
-        {
-            score.IncrementGamesPlayed();
-        }
+        foreach(var score in allScores) score.IncrementGamesPlayed();
 
         TriggerAnnouncerMessageRpc("THAT'S ALL FOLKS!", 3f);
         UpdateLeaderboardRpc();
@@ -269,13 +262,12 @@ public class NetworkMatchManager : NetworkBehaviour
     private IEnumerator EndMatchRoutine()
     {
         yield return new WaitForSeconds(3f);
-        
         ResetBooths();
         currentState.Value = MatchState.Lobby;
     }
 
     // ==========================================
-    // RPCs (Announcer & Leaderboard)
+    // RPCs
     // ==========================================
 
     [Rpc(SendTo.Everyone)]
@@ -310,14 +302,12 @@ public class NetworkMatchManager : NetworkBehaviour
     [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Everyone)]
     public void RequestSetDurationRpc(float newDuration) { if (currentState.Value == MatchState.Lobby) matchDurationSetting.Value = newDuration; }
 
+    // --- THE FIX: Replaced the old toggles with the consolidated Mode RPC ---
     [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Everyone)]
-    public void RequestTogglePowerupsRpc() { if (currentState.Value == MatchState.Lobby) powerupsEnabled.Value = !powerupsEnabled.Value; }
+    public void RequestSetPowerupModeRpc(PowerupMode newMode) { if (currentState.Value == MatchState.Lobby) powerupModeSetting.Value = newMode; }
 
     [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Everyone)]
     public void RequestSetSpeedRpc(float newSpeed) { if (currentState.Value == MatchState.Lobby) targetSpeedSetting.Value = newSpeed; }
-
-    [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Everyone)]
-    public void RequestSetChaosRpc(int level) { if (currentState.Value == MatchState.Lobby) chaosLevelSetting.Value = level; }
 
     [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Everyone)]
     public void RequestSetSpawnRateRpc(float newRate) { if (currentState.Value == MatchState.Lobby) spawnIntervalSetting.Value = newRate; }
