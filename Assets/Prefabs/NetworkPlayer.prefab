@@ -424,7 +424,7 @@ Transform:
   m_GameObject: {fileID: 2632589673111155699}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0.55, y: 0.35, z: 0.6}
+  m_LocalPosition: {x: 0.55, y: -0.4, z: 0.6}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -509,7 +509,6 @@ GameObject:
   - component: {fileID: 6663234555124619908}
   - component: {fileID: 4299265167707639287}
   - component: {fileID: 2490731709717071326}
-  - component: {fileID: 2388296629941894456}
   m_Layer: 0
   m_Name: Player Camera
   m_TagString: PlayerCamera
@@ -525,14 +524,14 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 3196758058238598030}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: 0, y: 0.75, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 8795532398554721181}
   - {fileID: 2284504834746968099}
-  m_Father: {fileID: 2512298946415933902}
+  m_Father: {fileID: 1874363896970221685}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!114 &4418483516476540630
 MonoBehaviour:
@@ -589,7 +588,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 44d70cc20219cd84593f67d248eafe36, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Unity.Cinemachine::Unity.Cinemachine.CinemachineCameraOffset
-  Offset: {x: 0, y: 0.75, z: 0}
+  Offset: {x: 0, y: 0, z: 0}
   ApplyAfter: 1
   PreserveComposition: 0
 --- !u!114 &4299265167707639287
@@ -634,22 +633,6 @@ MonoBehaviour:
   playerSelf: {fileID: 6628507149264979473}
   handAnimator: {fileID: -3801474900841889667}
   balloonShooter: {fileID: -825304004673381689}
---- !u!114 &2388296629941894456
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 3196758058238598030}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: e1d5f097458428b49b4918de64480932, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::ProceduralCameraShaker
-  traumaDecay: 1.5
-  noiseSpeed: 20
-  maxPositionalShake: {x: 0.2, y: 0.2, z: 0.1}
-  maxRotationalShake: {x: 10, y: 10, z: 5}
 --- !u!1 &3913865568171065814
 GameObject:
   m_ObjectHideFlags: 0
@@ -921,6 +904,56 @@ LineRenderer:
   m_UseWorldSpace: 1
   m_Loop: 0
   m_ApplyActiveColorSpace: 1
+--- !u!1 &5374763183881216206
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1874363896970221685}
+  - component: {fileID: 1370320935594757641}
+  m_Layer: 6
+  m_Name: ShakeContainer
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1874363896970221685
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5374763183881216206}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 5949971001371363268}
+  m_Father: {fileID: 2512298946415933902}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1370320935594757641
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5374763183881216206}
+  m_Enabled: 0
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2ab8353b5ebd32545867da143199a814, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::FirstGearGames.SmoothCameraShaker.CameraShaker
+  _shakeTechnique: 1
+  _makeDefaultOnEnable: 1
+  _limitMagnitude: 0
+  _positionalMagnitudeLimit: 10
+  _rotationalMagnitudeLimit: 3
 --- !u!1 &6367639327229523827
 GameObject:
   m_ObjectHideFlags: 0
@@ -1035,6 +1068,7 @@ GameObject:
   - component: {fileID: 1004929614301680572}
   - component: {fileID: 8184713279370266932}
   - component: {fileID: -3801474900841889667}
+  - component: {fileID: 9161064377839959757}
   m_Layer: 6
   m_Name: NetworkPlayer
   m_TagString: Untagged
@@ -1055,7 +1089,7 @@ Transform:
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
-  - {fileID: 5949971001371363268}
+  - {fileID: 1874363896970221685}
   - {fileID: 6458648774349206391}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
@@ -1178,7 +1212,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Unity.Netcode.Runtime::Unity.Netcode.NetworkObject
-  GlobalObjectIdHash: 2883407401
+  GlobalObjectIdHash: 1008526252
   InScenePlacedSourceGlobalObjectIdHash: 1008526252
   DeferredDespawnTick: 0
   Ownership: 1
@@ -1280,10 +1314,14 @@ MonoBehaviour:
     m_Bits: 512
   footstepManager: {fileID: 5682144394080269137}
   handAnimator: {fileID: -3801474900841889667}
-  cameraShaker: {fileID: 2388296629941894456}
-  stunDuration: 0.75
+  walkShakeProfile: {fileID: 11400000, guid: a6c7f41f8b079e44888ead664d64fb7b, type: 2}
+  hitShakeProfile: {fileID: 11400000, guid: 3c0aba29e78b94942ae949d2def54ec5, type: 2}
+  playerState: {fileID: 9161064377839959757}
   balloonShooter: {fileID: -825304004673381689}
   playerInteract: {fileID: 2490731709717071326}
+  stunDuration: 0.75
+  vCam: {fileID: 4418483516476540630}
+  shakeContainer: {fileID: 1874363896970221685}
 --- !u!114 &-7546428482564506342
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1381,7 +1419,7 @@ MonoBehaviour:
   colorManager: {fileID: 211856287403497843}
   handAnimator: {fileID: -3801474900841889667}
   playerInteract: {fileID: 2490731709717071326}
-  cameraShaker: {fileID: 2388296629941894456}
+  throwShakeProfile: {fileID: 11400000, guid: 22f07fd603d86c644b5a833d02615769, type: 2}
   currentShadeIndex: 0
   minThrowForce: 10
   maxThrowForce: 20
@@ -1492,6 +1530,34 @@ MonoBehaviour:
   m_EditorClassIdentifier: '::'
   ShowTopMostFoldoutHeaderGroup: 1
   networkAnimator: {fileID: 5169893561151277549}
+--- !u!114 &9161064377839959757
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6628507149264979473}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ae49ac2bb71f3ad4585be89f3b385186, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlayerState
+  ShowTopMostFoldoutHeaderGroup: 1
+  score:
+    UpdateTraits:
+      MinSecondsBetweenUpdates: 0
+      MaxSecondsBetweenUpdates: 0
+    m_InternalValue: 0
+  hasDoublePoints:
+    UpdateTraits:
+      MinSecondsBetweenUpdates: 0
+      MaxSecondsBetweenUpdates: 0
+    m_InternalValue: 0
+  hasReversedControls:
+    UpdateTraits:
+      MinSecondsBetweenUpdates: 0
+      MaxSecondsBetweenUpdates: 0
+    m_InternalValue: 0
 --- !u!1001 &807164913544166068
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -1742,7 +1808,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 9de30631990d9ca4d8b58874b7a6be0f, type: 3}
       propertyPath: m_LocalPosition.y
-      value: -1.785
+      value: -2.535
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 9de30631990d9ca4d8b58874b7a6be0f, type: 3}
       propertyPath: m_LocalPosition.z

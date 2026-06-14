@@ -45,17 +45,62 @@ public class HUDManager : MonoBehaviour
         }
     }
 
+    private void OnEnable()
+    {
+        // Listen for state changes so we can update UI text immediately when the state shifts
+        if (NetworkMatchManager.Instance != null)
+        {
+            NetworkMatchManager.Instance.currentState.OnValueChanged += (oldState, newState) => UpdateStateUI();
+        }
+    }
+
+    private void OnDisable()
+    {
+        if (NetworkMatchManager.Instance != null)
+        {
+            NetworkMatchManager.Instance.currentState.OnValueChanged -= (oldState, newState) => UpdateStateUI();
+        }
+    }
+
     void Update()
     {
+        if (NetworkMatchManager.Instance == null) return;
+
+        var state = NetworkMatchManager.Instance.currentState.Value;
+
+        if (state == NetworkMatchManager.MatchState.Active)
+        {
+            UpdateTimer(NetworkMatchManager.Instance.matchTimer.Value);
+        }
+        else if (state == NetworkMatchManager.MatchState.Countdown)
+        {
+            // Show the countdown (3, 2, 1...)
+            matchTimerText.text = $"STARTING: {Mathf.CeilToInt(NetworkMatchManager.Instance.countdownTimer.Value)}";
+        }
+        
+        // Update charge bar
         if (balloonShooter != null && chargeBarFill != null)
         {
             chargeBarFill.fillAmount = balloonShooter.GetChargePercentage();
         }
+    }
 
-        if (NetworkMatchManager.Instance != null && NetworkMatchManager.Instance.isGameActive.Value)
+    // New helper to handle the big status updates
+    private void UpdateStateUI()
+    {
+        var state = NetworkMatchManager.Instance.currentState.Value;
+
+        if (state == NetworkMatchManager.MatchState.WaitingForPositions)
         {
-            UpdateTimer(NetworkMatchManager.Instance.matchTimer.Value);
+            matchTimerText.text = "GET TO YOUR BOOTHS!";
         }
+        else if (state == NetworkMatchManager.MatchState.Lobby)
+        {
+            matchTimerText.text = "LOBBY";
+        }
+
+        // Refresh scoreboard to show/hide appropriately based on state
+        RefreshScoreboardDisplay();
     }
 
     // --- REWORKED: Dynamic Instantiation & Color Tinting ---

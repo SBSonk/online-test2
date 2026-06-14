@@ -1,6 +1,7 @@
 using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.Events;
+using FirstGearGames.SmoothCameraShaker;
 
 public class NetworkBalloonShooter : NetworkBehaviour
 {
@@ -11,7 +12,9 @@ public class NetworkBalloonShooter : NetworkBehaviour
     public PlayerColorManager colorManager; 
     public NetworkHandsAnimator handAnimator; 
     public PlayerInteract playerInteract; 
-    public ProceduralCameraShaker cameraShaker; // --- NEW ---
+
+    [Header("Camera Effects")]
+    public ShakeData throwShakeProfile; 
 
     [HideInInspector] public int currentShadeIndex = 0; 
 
@@ -67,6 +70,13 @@ public class NetworkBalloonShooter : NetworkBehaviour
 
     private void HandleChargeInput()
     {
+        // Only allow shooting if the state is ACTIVE!
+        if (NetworkMatchManager.Instance != null && NetworkMatchManager.Instance.currentState.Value != NetworkMatchManager.MatchState.Active)
+        {
+            if (isWindingUp || isCharging) CancelCharge();
+            return;
+        }
+
         if (playerInteract != null && playerInteract.IsHovering())
         {
             if (isWindingUp || isCharging) CancelCharge();
@@ -142,12 +152,9 @@ public class NetworkBalloonShooter : NetworkBehaviour
         float chargePercent = currentChargeTime / maxChargeTime;
         float finalForce = Mathf.Lerp(minThrowForce, maxThrowForce, chargePercent);
 
-        // --- NEW: Add throwing kick to the camera! ---
-        if (cameraShaker != null)
+        if (throwShakeProfile != null)
         {
-            // Gives a sharp trauma kick between 0.2 (tap) and 0.5 (max charge)
-            // Change this:
-            cameraShaker.AddTrauma(Mathf.Lerp(0.1f, 0.25f, chargePercent));
+            CameraShakerHandler.Shake(throwShakeProfile);
         }
 
         Vector3 throwDirection = cameraTransform.forward;

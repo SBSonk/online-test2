@@ -1,150 +1,97 @@
-using System;
 using TMPro;
 using Unity.Netcode;
 using Unity.Netcode.Transports.UTP;
-using Unity.Services.Authentication;
-using Unity.Services.Core;
-using Unity.Services.Relay;
-using Unity.Services.Relay.Models;
 using UnityEngine;
 
 public class MultiplayerMenu : NetworkBehaviour
 {
     [Header("UI References")]
     [SerializeField] private GameObject menuUI;
-    [SerializeField] private TMP_InputField joinCodeInput;
-    [SerializeField] private TMP_Text joinCodeText; 
+    [Tooltip("Players enter the Host's IPv4 address here. Leave blank to use localhost.")]
+    [SerializeField] private TMP_InputField ipAddressInput; 
     [SerializeField] private TMP_Text statusText;
     
     [Tooltip("Assign a Text element on your permanent gameplay HUD here")]
-    [SerializeField] private TMP_Text inGameJoinCodeText; 
+    [SerializeField] private TMP_Text inGameIpText; 
 
-    [Header("Relay Settings")]
-    [SerializeField] private int maxConnections = 4;
+    [Header("Network Settings")]
+    [SerializeField] private string defaultIP = "127.0.0.1"; // Localhost
+    [SerializeField] private ushort port = 7777; // Default Netcode port
 
-    private const string WebGLConnectionType = "wss";
-
-    private async void Start()
+    public void StartHost()
     {
-        await InitializeUnityServices();
-    }
+        SetStatus("Starting local host...");
 
-    private async System.Threading.Tasks.Task InitializeUnityServices()
-    {
-        try
+        // Grab the transport and configure it for local UDP
+        UnityTransport transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
+        transport.SetConnectionData(defaultIP, port);
+        transport.UseWebSockets = false; // Must be false for local/desktop testing
+
+        bool started = NetworkManager.Singleton.StartHost();
+
+        if (started)
         {
-            if (UnityServices.State == ServicesInitializationState.Uninitialized)
-            {
-                await UnityServices.InitializeAsync();
-            }
+            if (inGameIpText != null) inGameIpText.text = "Hosting on: " + defaultIP; 
 
-            if (!AuthenticationService.Instance.IsSignedIn)
-            {
-                await AuthenticationService.Instance.SignInAnonymouslyAsync();
-            }
-
-            SetStatus("Unity Services ready.");
+            SetStatus("Host started on " + defaultIP + ":" + port);
+            HideMenu();
         }
-        catch (Exception exception)
+        else
         {
-            SetStatus("Unity Services failed to initialize.");
-            Debug.LogError(exception);
+            SetStatus("Failed to start Host.");
         }
     }
 
-    public async void StartHost()
+    public void StartClient()
     {
-        try
+        SetStatus("Joining local session...");
+
+        // Use the IP typed in the input, or default to 127.0.0.1 if left blank
+        string ipAddress = defaultIP;
+        if (ipAddressInput != null && !string.IsNullOrWhiteSpace(ipAddressInput.text))
         {
-            SetStatus("Creating host session...");
-
-            await InitializeUnityServices();
-
-            Allocation allocation = await RelayService.Instance.CreateAllocationAsync(maxConnections);
-            string joinCode = await RelayService.Instance.GetJoinCodeAsync(allocation.AllocationId);
-
-            UnityTransport transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
-            transport.UseWebSockets = true;
-            transport.SetRelayServerData(AllocationUtils.ToRelayServerData(allocation, WebGLConnectionType));
-
-            bool started = NetworkManager.Singleton.StartHost();
-
-            if (started)
-            {
-                if (joinCodeText != null) joinCodeText.text = "Join Code: " + joinCode;
-                
-                // Update the permanent HUD for the host
-                if (inGameJoinCodeText != null) inGameJoinCodeText.text = "Room Code: " + joinCode; 
-
-                SetStatus("Host started. Join Code: " + joinCode);
-                HideMenu();
-            }
-            else
-            {
-                SetStatus("Failed to start Host.");
-            }
+            ipAddress = ipAddressInput.text.Trim();
         }
-        catch (Exception exception)
+
+        // Configure transport with the target IP
+        UnityTransport transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
+        transport.SetConnectionData(ipAddress, port);
+        transport.UseWebSockets = false;
+
+        bool started = NetworkManager.Singleton.StartClient();
+
+        if (started)
         {
-            SetStatus("Host failed. Check Console.");
-            Debug.LogError(exception);
+            if (inGameIpText != null) inGameIpText.text = "Connected to: " + ipAddress;
+
+            SetStatus("Client started.");
+            HideMenu();
         }
-    }
-
-    public async void StartClient()
-    {
-        try
+        else
         {
-            SetStatus("Joining session...");
-
-            await InitializeUnityServices();
-
-            if (joinCodeInput == null)
-            {
-                SetStatus("Join Code Input is missing.");
-                return;
-            }
-
-            string joinCode = joinCodeInput.text.Trim().ToUpper();
-
-            if (string.IsNullOrEmpty(joinCode))
-            {
-                SetStatus("Please enter a join code.");
-                return;
-            }
-
-            JoinAllocation joinAllocation = await RelayService.Instance.JoinAllocationAsync(joinCode);
-
-            UnityTransport transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
-            transport.UseWebSockets = true;
-            transport.SetRelayServerData(AllocationUtils.ToRelayServerData(joinAllocation, WebGLConnectionType));
-
-            bool started = NetworkManager.Singleton.StartClient();
-
-            if (started)
-            {
-                // Update the permanent HUD for the client using what they typed
-                if (inGameJoinCodeText != null) inGameJoinCodeText.text = "Room Code: " + joinCode;
-
-                SetStatus("Client started.");
-                HideMenu();
-            }
-            else
-            {
-                SetStatus("Failed to start Client.");
-            }
-        }
-        catch (Exception exception)
-        {
-            SetStatus("Client failed. Check join code and Console.");
-            Debug.LogError(exception);
+            SetStatus("Failed to start Client.");
         }
     }
 
     public void StartServer()
     {
-        SetStatus("Dedicated Server is not recommended for Unity Play WebGL.");
-        Debug.LogWarning("StartServer is disabled for Unity Play WebGL. Use StartHost or StartClient instead.");
+        SetStatus("Starting dedicated local server...");
+        
+        UnityTransport transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
+        transport.SetConnectionData(defaultIP, port);
+        transport.UseWebSockets = false;
+
+        bool started = NetworkManager.Singleton.StartServer();
+        
+        if (started)
+        {
+            SetStatus("Server started on " + defaultIP + ":" + port);
+            HideMenu();
+        }
+        else
+        {
+            SetStatus("Failed to start Server.");
+        }
     }
 
     private void HideMenu()

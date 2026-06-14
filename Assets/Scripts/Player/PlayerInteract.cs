@@ -66,6 +66,9 @@ public class PlayerInteract : NetworkBehaviour
         
         if (Physics.Raycast(ray, out RaycastHit hit, interactDistance, interactableLayer))
         {
+            // [DEBUG] We hit something on the correct layer! Draw a GREEN line to it.
+            Debug.DrawRay(ray.origin, ray.direction * hit.distance, Color.green);
+
             Interactable hitObject = hit.collider.GetComponent<Interactable>();
             if (!hitObject) hitObject = hit.collider.GetComponentInParent<Interactable>();
 
@@ -90,11 +93,15 @@ public class PlayerInteract : NetworkBehaviour
             }
             else
             {
+                // [DEBUG] We hit a collider on the right layer, but the script is missing!
+                Debug.LogWarning($"[PlayerInteract Debug] Hit collider '{hit.collider.gameObject.name}', but no 'Interactable' script was found on it or its parents!");
                 ClearInteractable();
             }
         }
         else
         {
+            // [DEBUG] We hit nothing on the interactable layer. Draw a RED line showing max distance.
+            Debug.DrawRay(ray.origin, ray.direction * interactDistance, Color.red);
             ClearInteractable();
         }
     }

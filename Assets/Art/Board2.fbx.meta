@@ -8,27 +8,27 @@ ModelImporter:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
       name: Board
-    second: {fileID: 2100000, guid: 0f0e254bc0a8a0947b0084f128f7878d, type: 2}
+    second: {fileID: 2100000, guid: be375197dc2de9c469c8412f76791eb2, type: 2}
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
       name: Material
-    second: {fileID: 2100000, guid: 677f06a03f721dc409f023518d5f3c5f, type: 2}
+    second: {fileID: 2100000, guid: 29fc93a4760620d499581c7713604a74, type: 2}
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
       name: Material.001
-    second: {fileID: 2100000, guid: 37fc886605457a5488ba364e534b3d77, type: 2}
+    second: {fileID: 2100000, guid: fcaaed80f4fa8cf4daa472c6a7709203, type: 2}
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
       name: Pillar
-    second: {fileID: 2100000, guid: eb7bc5563def8374dac50b87c1bf18c2, type: 2}
+    second: {fileID: 2100000, guid: f527a9b488133734a9143c44bbc999cc, type: 2}
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
       name: Terminal
-    second: {fileID: 2100000, guid: ff8f211202dc70143a04ca679d4c5dce, type: 2}
+    second: {fileID: 2100000, guid: 451109058293a494aa1b7a743a164064, type: 2}
   materials:
     materialImportMode: 2
     materialName: 0
@@ -58,7 +58,7 @@ ModelImporter:
     isReadable: 0
   meshes:
     lODScreenPercentages: []
-    globalScale: 0.5
+    globalScale: 100
     meshCompression: 0
     addColliders: 0
     useSRGBMaterialColor: 1
@@ -116,7 +116,7 @@ ModelImporter:
     armStretch: 0.05
     legStretch: 0.05
     feetSpacing: 0
-    globalScale: 0.5
+    globalScale: 100
     rootMotionBoneName: 
     hasTranslationDoF: 0
     hasExtraRoot: 0

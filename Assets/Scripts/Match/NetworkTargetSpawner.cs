@@ -34,8 +34,8 @@ public class NetworkTargetSpawner : NetworkBehaviour
 
         InitializeSpawner();
 
-        // NEW: Subscribe to the Game Manager's state changes
-        NetworkMatchManager.Instance.isGameActive.OnValueChanged += HandleGameStateChanged;
+        // FIXED: Subscribe to the new State Machine
+        NetworkMatchManager.Instance.currentState.OnValueChanged += HandleGameStateChanged;
     }
 
     public override void OnDestroy()
@@ -45,20 +45,20 @@ public class NetworkTargetSpawner : NetworkBehaviour
         
         if (IsServer && NetworkMatchManager.Instance != null)
         {
-            NetworkMatchManager.Instance.isGameActive.OnValueChanged -= HandleGameStateChanged;
+            NetworkMatchManager.Instance.currentState.OnValueChanged -= HandleGameStateChanged;
         }
     }
 
-    private void HandleGameStateChanged(bool wasActive, bool isActive)
+    private void HandleGameStateChanged(NetworkMatchManager.MatchState oldState, NetworkMatchManager.MatchState newState)
     {
-        if (isActive)
+        if (newState == NetworkMatchManager.MatchState.Active)
         {
             spawnCoroutine = StartCoroutine(SpawnLoop());
         }
-        else
+        else if (oldState == NetworkMatchManager.MatchState.Active) // Only stop if we were just active
         {
             if (spawnCoroutine != null) StopCoroutine(spawnCoroutine);
-            ClearAllTargets(); // Optional: Wipe board clean when time is up
+            ClearAllTargets(); 
         }
     }
 
@@ -80,7 +80,7 @@ public class NetworkTargetSpawner : NetworkBehaviour
 
     IEnumerator SpawnLoop()
     {
-        while (NetworkMatchManager.Instance.isGameActive.Value)
+        while (NetworkMatchManager.Instance.currentState.Value == NetworkMatchManager.MatchState.Active)
         {
             yield return new WaitForSeconds(Random.Range(timeBetweenSpawns.x, timeBetweenSpawns.y));
 

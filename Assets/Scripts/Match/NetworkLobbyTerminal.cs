@@ -16,14 +16,14 @@ public class NetworkLobbyTerminal : NetworkBehaviour
 
     public override void OnNetworkSpawn()
     {
-        // Whenever the host changes a setting, update the screen for everyone
+        // 1. Keep your existing listeners for duration/target settings
         matchTimeSetting.OnValueChanged += (oldVal, newVal) => UpdateScreen();
         maxTargetsSetting.OnValueChanged += (oldVal, newVal) => UpdateScreen();
         
-        // Listen to see if the game started so we can change the status text
+        // 2. UPDATED: Listen to the MatchState machine instead of the boolean
         if (NetworkMatchManager.Instance != null)
         {
-            NetworkMatchManager.Instance.isGameActive.OnValueChanged += (oldVal, newVal) => UpdateScreen();
+            NetworkMatchManager.Instance.currentState.OnValueChanged += (oldState, newState) => UpdateScreen();
         }
 
         UpdateScreen(); // Initial draw
@@ -38,13 +38,18 @@ public class NetworkLobbyTerminal : NetworkBehaviour
         // Only let the server/host start the game to prevent griefing
         if (!IsServer) return; 
 
-        // 1. Apply the chosen settings to the real game managers
-        NetworkMatchManager.Instance.matchDuration = matchTimeSetting.Value;
+        // We no longer need to manually copy settings here! 
+        // The matchDurationSetting is already updated via the UI_SetDuration RPCs on the bulletin board.
         
-        NetworkTargetSpawner spawner = Object.FindAnyObjectByType<NetworkTargetSpawner>();
-        if (spawner != null) spawner.maxTargetCount.Value = maxTargetsSetting.Value;
+        NetworkTargetSpawner spawner = FindAnyObjectByType<NetworkTargetSpawner>();
+        if (spawner != null) 
+        {
+            // NOTE: Make sure your NetworkTargetSpawner actually has a 'maxTargetCount' variable!
+            // If it doesn't, you'll need to add it or remove this line.
+            spawner.maxTargetCount.Value = maxTargetsSetting.Value;
+        }
 
-        // 2. Start the game!
+        // Start the game! The NetworkMatchManager will automatically pull the correct synchronized settings.
         NetworkMatchManager.Instance.RequestStartMatch();
     }
 
@@ -71,15 +76,33 @@ public class NetworkLobbyTerminal : NetworkBehaviour
     // =========================================================
 
     private void UpdateScreen()
-    {
-        if (timeText != null) timeText.text = $"{matchTimeSetting.Value} SEC";
-        if (targetsText != null) targetsText.text = $"{maxTargetsSetting.Value} MAX";
+{
+    if (timeText != null) timeText.text = $"{NetworkMatchManager.Instance.matchDurationSetting.Value} SEC";
+    if (targetsText != null) targetsText.text = $"{maxTargetsSetting.Value} MAX";
 
-        if (statusText != null && NetworkMatchManager.Instance != null)
+    if (statusText != null && NetworkMatchManager.Instance != null)
+    {
+        var state = NetworkMatchManager.Instance.currentState.Value;
+
+        switch (state)
         {
-            bool isPlaying = NetworkMatchManager.Instance.isGameActive.Value;
-            statusText.text = isPlaying ? "MATCH IN PROGRESS..." : "WAITING FOR HOST TO START...";
-            statusText.color = isPlaying ? Color.red : Color.green;
+            case NetworkMatchManager.MatchState.Lobby:
+                statusText.text = "READY TO START";
+                statusText.color = Color.green;
+                break;
+            case NetworkMatchManager.MatchState.WaitingForPositions:
+                statusText.text = "GET TO YOUR BOOTHS!";
+                statusText.color = Color.yellow;
+                break;
+            case NetworkMatchManager.MatchState.Countdown:
+                statusText.text = "GET READY...";
+                statusText.color = Color.yellow;
+                break;
+            case NetworkMatchManager.MatchState.Active:
+                statusText.text = "MATCH IN PROGRESS!";
+                statusText.color = Color.red;
+                break;
         }
     }
+}
 }

@@ -79,6 +79,17 @@ public class BalloonProjectile : NetworkBehaviour
 
         TriggerPopClientRpc();
 
+        // --- THE MISSING PIECE: Shooting Gallery Targets ---
+        if (collision.gameObject.TryGetComponent(out CarnivalTarget galleryTarget))
+        {
+            // Tell the target it was hit, and pass the ID of the player who threw the balloon
+            galleryTarget.ProcessHit(OwnerClientId);
+            
+            // Optional: You can trigger your hit marker here too!
+            NotifyHitRpc(); 
+        }
+        // ---------------------------------------------------
+
         if (collision.gameObject.TryGetComponent(out NetworkHasHealth health))
         {
             health.TakeDamage((int)damage, OwnerClientId);
@@ -93,6 +104,9 @@ public class BalloonProjectile : NetworkBehaviour
             Vector3 finalForce = (knockbackDir * knockbackForce) + (Vector3.up * upwardKnockback);
 
             playerMove.TakeBalloonHit(finalForce, syncedBalloonColor.Value);
+            
+            // Note: I added a hit marker call here too so you know when you successfully stun someone!
+            NotifyHitRpc();
         }
 
         Invoke(nameof(DestroyBalloon), 1f);

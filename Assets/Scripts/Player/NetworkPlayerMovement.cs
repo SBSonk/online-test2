@@ -1,6 +1,9 @@
 using Unity.Netcode;
 using UnityEngine;
+using FirstGearGames.SmoothCameraShaker;
+using Unity.Cinemachine;
 
+[RequireComponent(typeof(Rigidbody))]
 public class NetworkPlayerMovement : NetworkBehaviour
 {
     [Header("Movement (Smooth)")]
@@ -20,19 +23,20 @@ public class NetworkPlayerMovement : NetworkBehaviour
     public FootstepManager footstepManager;
     public NetworkHandsAnimator handAnimator; 
 
-    // --- NEW: Camera Shake Reference ---
-    [Header("Camera Effects")]
-    public ProceduralCameraShaker cameraShaker; 
+    [Header("Camera Shake Profiles")]
+    public ShakeData walkShakeProfile;
+    public ShakeData hitShakeProfile;
 
-    // --- NEW: Stun & Knockback Variables ---
-    [Header("Stun Settings")]
-    public float stunDuration = 3f;
+    [Header("Game State & Interactions")]
+    public PlayerState playerState; // Drives the Reverse Controls penalty
     public NetworkBalloonShooter balloonShooter;
     public PlayerInteract playerInteract;
+
+    [Header("Stun Settings")]
+    public float stunDuration = 3f;
     private bool isStunned = false; 
 
     private Rigidbody rb;
-    
     private Vector2 currentInput;
     private bool jumpRequested;
     private Vector3 camForward;
@@ -43,11 +47,55 @@ public class NetworkPlayerMovement : NetworkBehaviour
     private Vector3 serverCamRight;
     private bool serverJumpRequested;
 
+    [Header("Cameras & Shakers")]
+    public CinemachineCamera vCam; 
+    public Transform shakeContainer; 
+
     void Awake()
     {
         rb = GetComponent<Rigidbody>();
         rb.interpolation = RigidbodyInterpolation.Interpolate;
         rb.constraints = RigidbodyConstraints.FreezeRotation; 
+    }
+
+    public override void OnNetworkSpawn()
+    {
+        base.OnNetworkSpawn();
+
+        CameraShaker shaker = shakeContainer.GetComponent<CameraShaker>();
+
+        if (IsOwner)
+        {
+            if (vCam != null) vCam.enabled = true;
+            if (shaker != null) shaker.enabled = true; 
+        }
+        else
+        {
+            if (vCam != null) vCam.enabled = false;
+            if (shaker != null) Destroy(shaker);
+        }
+    }
+
+    private void OnEnable()
+    {
+        if (footstepManager != null)
+        {
+            footstepManager.OnStep += TriggerStepShake;
+        }
+    }
+
+    private void OnDisable()
+    {
+        if (footstepManager != null)
+        {
+            footstepManager.OnStep -= TriggerStepShake;
+        }
+    }
+
+    private void TriggerStepShake()
+    {
+        if (!IsOwner || isStunned || walkShakeProfile == null) return;
+        CameraShakerHandler.Shake(walkShakeProfile);
     }
 
     // ==========================================
@@ -78,8 +126,10 @@ public class NetworkPlayerMovement : NetworkBehaviour
         BalloonSplatUI splatUI = FindAnyObjectByType<BalloonSplatUI>();
         if (splatUI != null) splatUI.ShowSplat(splatColor);
 
-        // --- NEW: Apply massive explosion shake ---
-        if (cameraShaker != null) cameraShaker.AddTrauma(0.85f);
+        if (hitShakeProfile != null)
+        {
+            CameraShakerHandler.Shake(hitShakeProfile);
+        }
     }
 
     private void RecoverFromStun()
@@ -110,7 +160,7 @@ public class NetworkPlayerMovement : NetworkBehaviour
         bool isMoving = false;
         bool isGroundedAudio = false;
 
-        if (footstepManager != null || cameraShaker != null)
+        if (footstepManager != null || walkShakeProfile != null)
         {
             Vector3 horizontalVelocity = new Vector3(rb.linearVelocity.x, 0, rb.linearVelocity.z);
             isMoving = horizontalVelocity.magnitude > 0.5f; 
@@ -119,15 +169,9 @@ public class NetworkPlayerMovement : NetworkBehaviour
             if (footstepManager != null) footstepManager.SetFootsteps(isMoving && isGroundedAudio);
         }
 
-        // --- NEW: Apply continuous walking rumble ---
-        if (cameraShaker != null)
-        {
-            // Change this:
-            cameraShaker.SetBaseTrauma((isMoving && isGroundedAudio && !isStunned) ? 0.08f : 0f);
-        }
-
         if (!IsOwner || !playerCamera) return;
 
+        // --- MATCH STATE CHECK ---
         if (balloonShooter != null && !balloonShooter.enabled) 
         {
             currentInput = Vector2.zero;
@@ -137,6 +181,12 @@ public class NetworkPlayerMovement : NetworkBehaviour
 
         currentInput = new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical")).normalized;
         
+        // --- REVERSE CONTROLS CHECK ---
+        if (playerState != null && playerState.hasReversedControls.Value)
+        {
+            currentInput *= -1f; 
+        }
+
         if (handAnimator != null)
         {
             handAnimator.SetWalking(currentInput.sqrMagnitude > 0.01f);
@@ -153,7 +203,6 @@ public class NetworkPlayerMovement : NetworkBehaviour
         camRight.Normalize();
 
         UpdateMovementInputsServerRpc(currentInput, camForward, camRight, jumpRequested);
-        
         jumpRequested = false; 
     }
 

@@ -28,7 +28,7 @@ Material:
   - _DITHERMODE_SCREEN
   - _FILTERMODE_POINT
   - _LIGHTMODE_TEXELLIT
-  - _RECEIVESHADOWSMODE_ON
+  - _RECEIVESHADOWSMODE_OFF
   - _SNAPMODE_VIEW
   - _USE_FLAT_SHADING
   - _WRAPMODE_REPEAT
@@ -115,10 +115,10 @@ Material:
     - _DitherMode: 0
     - _FilterMode: 1
     - _LightMode: 1
-    - _ReceiveShadowsMode: 0
+    - _ReceiveShadowsMode: 1
     - _ResolutionLimit: 64
     - _SnapMode: 2
-    - _SnapsPerUnit: 64
+    - _SnapsPerUnit: 128
     - _WrapMode: 1
     m_Floats:
     - _AddPrecomputedVelocity: 0

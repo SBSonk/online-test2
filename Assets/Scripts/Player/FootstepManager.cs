@@ -11,6 +11,9 @@ public class FootstepManager : MonoBehaviour
     public float walkTime = 0.5f;
 
     public AudioSource leftFootSrc, rightFootSrc;
+    
+    // --- ADDED: Event to broadcast when a step actually happens ---
+    public event Action OnStep;
 
     #region Clips
 
@@ -42,7 +45,6 @@ public class FootstepManager : MonoBehaviour
         Vector3 rayOffset = new Vector3(0, 0.25f); 
         if (Physics.Raycast(transform.position + rayOffset, Vector3.down, out RaycastHit hit, rayDistance, groundLayer))
         {
-            // Assumes you have a small script called SetFloorType on your floor objects
             if (hit.transform.TryGetComponent(out SetFloorType floor))
             {
                 SetFloor(floor.floorToSet);
@@ -83,6 +85,9 @@ public class FootstepManager : MonoBehaviour
                     if (clip != null)
                     {
                         audioSource.PlayOneShot(clip);
+                        
+                        // --- ADDED: Fire the event perfectly synced with the audio ---
+                        OnStep?.Invoke();
                     }
                 }
             }
