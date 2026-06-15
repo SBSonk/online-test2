@@ -1,7 +1,9 @@
-using Unity.Netcode;
+using System;
 using UnityEngine;
+using Unity.Netcode;
 using FirstGearGames.SmoothCameraShaker;
 using Unity.Cinemachine;
+using Random = UnityEngine.Random;
 
 [RequireComponent(typeof(Rigidbody))]
 public class NetworkPlayerMovement : NetworkBehaviour
@@ -68,6 +70,10 @@ public class NetworkPlayerMovement : NetworkBehaviour
     public CinemachineCamera vCam; 
     public Transform shakeContainer; 
 
+    // Tracking variables to bypass the client rb.linearVelocity = 0 bug
+    private Vector3 lastPosition;
+    private float clientHorizontalSpeed;
+
     void Awake()
     {
         rb = GetComponent<Rigidbody>();
@@ -80,6 +86,9 @@ public class NetworkPlayerMovement : NetworkBehaviour
     public override void OnNetworkSpawn()
     {
         base.OnNetworkSpawn();
+        
+        // Initialize position tracking on spawn
+        lastPosition = transform.position;
 
         CameraShaker shaker = shakeContainer.GetComponent<CameraShaker>();
 
@@ -109,8 +118,8 @@ public class NetworkPlayerMovement : NetworkBehaviour
     {
         if (!IsOwner || isStunned) return;
 
-        Vector3 horizontalVelocity = new Vector3(rb.linearVelocity.x, 0, rb.linearVelocity.z);
-        float currentSpeedRatio = horizontalVelocity.magnitude / maxMoveSpeed;
+        // FIXED: Uses the reliable calculated client horizontal speed instead of rb.linearVelocity
+        float currentSpeedRatio = clientHorizontalSpeed / maxMoveSpeed;
 
         if (isSprinting && currentSpeedRatio > 1.1f)
         {
@@ -204,22 +213,14 @@ public class NetworkPlayerMovement : NetworkBehaviour
 
     void Update()
     {
-        bool isMoving = false;
-        bool isGroundedAudio = false;
+        // 1. Calculate tracking velocity via position delta (Works perfectly on owning client)
+        Vector3 currentPos = transform.position;
+        Vector3 displacement = currentPos - lastPosition;
+        displacement.y = 0; // Look at horizontal ground movement only
+        clientHorizontalSpeed = Time.deltaTime > 0 ? displacement.magnitude / Time.deltaTime : 0f;
+        lastPosition = currentPos;
 
-        if (footstepManager != null || walkShakeProfile != null)
-        {
-            Vector3 horizontalVelocity = new Vector3(rb.linearVelocity.x, 0, rb.linearVelocity.z);
-            isMoving = horizontalVelocity.magnitude > 0.5f; 
-            isGroundedAudio = Physics.Raycast(transform.position, Vector3.down, raycastLength, groundLayer);
-            
-            if (footstepManager != null) 
-            {
-                footstepManager.SetFootsteps(isMoving && isGroundedAudio);
-                footstepManager.SetSprintState(isSprinting); 
-            }
-        }
-
+        // 2. NETWORK AUTHORIZATION GUARD: Only the owner tracks inputs and drives audio states!
         if (!IsOwner || !playerCamera) return;
 
         if (balloonShooter != null && !balloonShooter.enabled) 
@@ -227,24 +228,28 @@ public class NetworkPlayerMovement : NetworkBehaviour
             currentInput = Vector2.zero;
             isSprinting = false;
             UpdateMovementInputsServerRpc(Vector2.zero, Vector3.forward, Vector3.right, false, false);
+            
+            if (footstepManager != null)
+            {
+                footstepManager.SetFootsteps(false);
+                footstepManager.SetSprintState(false);
+            }
             return;
         }
 
+        // 3. Process local movement inputs
         currentInput = new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical")).normalized;
         bool hasMovementInput = currentInput.sqrMagnitude > 0.01f;
         
-        // --- NEW: Check if the weapon is actively being used ---
         bool isShooting = balloonShooter != null && (balloonShooter.isWindingUp || balloonShooter.isCharging);
 
-        // --- FIXED SPRINT INPUT LOGIC ---
+        // Sprint configuration logic
         if (useToggleSprint)
         {
-            // Only allow turning toggle sprint ON if we aren't shooting
             if (Input.GetKeyDown(KeyCode.LeftShift) && hasMovementInput && !isShooting)
             {
                 isSprinting = !isSprinting;
             }
-            // Auto-cancel if the player stops walking OR starts charging a balloon
             else if (!hasMovementInput || isShooting)
             {
                 isSprinting = false;
@@ -252,17 +257,14 @@ public class NetworkPlayerMovement : NetworkBehaviour
         }
         else
         {
-            // Must hold shift, have movement input, AND not be shooting
             isSprinting = Input.GetKey(KeyCode.LeftShift) && hasMovementInput && !isShooting;
         }
 
-        // QOL FIX: Also auto-cancel sprint immediately the exact frame the player clicks
         if (Input.GetKeyDown(KeyCode.Mouse0))
         {
             isSprinting = false;
         }
         
-        // --- REVERSE CONTROLS CHECK ---
         if (playerState != null && playerState.hasReversedControls.Value)
         {
             currentInput *= -1f; 
@@ -279,8 +281,21 @@ public class NetworkPlayerMovement : NetworkBehaviour
         camRight.y = 0;
         camRight.Normalize();
 
+        // Send inputs to server for simulation
         UpdateMovementInputsServerRpc(currentInput, camForward, camRight, jumpRequested, isSprinting);
         jumpRequested = false; 
+
+        // 4. FIXED FOOTSTEP DRIVER:
+        // Checked entirely on client using local input intent + actual world movement displacement.
+        // This stops ghost footsteps when pushing against walls, while preserving responsiveness.
+        if (footstepManager != null)
+        {
+            bool isMoving = hasMovementInput && clientHorizontalSpeed > 0.4f; 
+            bool isGroundedAudio = Physics.Raycast(transform.position, Vector3.down, raycastLength, groundLayer);
+            
+            footstepManager.SetFootsteps(isMoving && isGroundedAudio);
+            footstepManager.SetSprintState(isSprinting); 
+        }
     }
 
     void FixedUpdate()

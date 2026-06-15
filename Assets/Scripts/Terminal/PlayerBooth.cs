@@ -13,6 +13,10 @@ public class PlayerBooth : NetworkBehaviour
     public Color idleColor = new Color(1f, 1f, 1f, 0.1f);   
     public Color readyColorMultiplier = new Color(0.5f, 1.5f, 0.5f, 1f); 
 
+    [Header("Audio")]
+    public AudioSource boothAudioSource;
+    public AudioClip readyUpClip;
+
     [Header("Booth Settings")]
     public Transform boothCenter;
 
@@ -24,37 +28,61 @@ public class PlayerBooth : NetworkBehaviour
     private List<NetworkPlayerMovement> playersPhysicallyInside = new List<NetworkPlayerMovement>();
     private List<NetworkPlayerMovement> playersLockedAndReady = new List<NetworkPlayerMovement>();
 
+    private bool isServerSubscribed = false;
+    
+    // --- CACHING FOR BULLETPROOF RENDER PERFORMANCE ---
+    private MaterialPropertyBlock propBlock;
+    private Color lastAppliedColor = Color.clear;
+
     public override void OnNetworkSpawn()
     {
-        isBoothOccupied.OnValueChanged += (oldVal, newVal) => UpdateVisuals();
-        assignedColor.OnValueChanged += (oldVal, newVal) => UpdateVisuals();
-        assignedClientId.OnValueChanged += (oldVal, newVal) => UpdateVisuals(); 
-        
-        if (NetworkMatchManager.Instance != null)
-        {
-            NetworkMatchManager.Instance.currentState.OnValueChanged += HandleStateChange;
-            NetworkMatchManager.Instance.currentGameMode.OnValueChanged += (oldMode, newMode) => UpdateVisuals();
-        }
-        
-        UpdateVisuals(); 
+        // Subscribe to the occupancy variable so all clients hear the sound
+        isBoothOccupied.OnValueChanged += HandleOccupancyChanged;
     }
 
     public override void OnNetworkDespawn()
     {
-        if (NetworkMatchManager.Instance != null)
+        isBoothOccupied.OnValueChanged -= HandleOccupancyChanged;
+
+        if (IsServer && isServerSubscribed && NetworkMatchManager.Instance != null)
         {
             NetworkMatchManager.Instance.currentState.OnValueChanged -= HandleStateChange;
-            NetworkMatchManager.Instance.currentGameMode.OnValueChanged -= (oldMode, newMode) => UpdateVisuals();
         }
+    }
+
+    private void HandleOccupancyChanged(bool oldVal, bool newVal)
+    {
+        // If the booth just became occupied (false -> true), play the ready sound
+        if (!oldVal && newVal)
+        {
+            if (boothAudioSource != null && readyUpClip != null)
+            {
+                boothAudioSource.PlayOneShot(readyUpClip);
+            }
+        }
+    }
+
+    void Update()
+    {
+        // Wait until the manager exists
+        if (NetworkMatchManager.Instance == null) return;
+
+        // 1. SAFELY SUBSCRIBE SERVER LOGIC (No coroutines needed)
+        if (IsServer && !isServerSubscribed)
+        {
+            NetworkMatchManager.Instance.currentState.OnValueChanged += HandleStateChange;
+            isServerSubscribed = true;
+        }
+
+        // 2. FORCE VISUALS TO MATCH DATA EXACTLY
+        UpdateVisuals();
     }
 
     private void HandleStateChange(NetworkMatchManager.MatchState oldState, NetworkMatchManager.MatchState newState)
     {
-        UpdateVisuals();
-
         if (!IsServer) return;
 
-        // --- THE FIX: Completely wipe all internal states when leaving the Waiting phase ---
+        // Unlock everyone if the match starts or ends
         if (newState == NetworkMatchManager.MatchState.Active || newState == NetworkMatchManager.MatchState.Lobby)
         {
             foreach (var player in playersLockedAndReady)
@@ -62,19 +90,20 @@ public class PlayerBooth : NetworkBehaviour
                 if (player != null) player.SetBoothLock(false, null);
             }
             playersLockedAndReady.Clear();
-            
-            // This is the variable that was getting stuck!
             isBoothOccupied.Value = false; 
         }
 
         if (NetworkMatchManager.Instance.currentGameMode.Value != boothMode) return;
 
-        // If a new match starts and players are already standing in the booth, lock them!
+        // Auto-lock players who are already standing in the booth when the round requests them to get in position
         if (newState == NetworkMatchManager.MatchState.WaitingForPositions)
         {
+            // Clean out disconnected/null players just in case
+            playersPhysicallyInside.RemoveAll(p => p == null);
+
             foreach (var player in playersPhysicallyInside)
             {
-                if (player != null && !playersLockedAndReady.Contains(player))
+                if (!playersLockedAndReady.Contains(player))
                 {
                     if (player.OwnerClientId == assignedClientId.Value) LockAndReadyPlayer(player);
                 }
@@ -84,41 +113,50 @@ public class PlayerBooth : NetworkBehaviour
 
     private void UpdateVisuals()
     {
-        if (NetworkMatchManager.Instance == null) return;
-
         bool isActiveMode = (NetworkMatchManager.Instance.currentGameMode.Value == boothMode);
-        if (floorHighlight != null) floorHighlight.enabled = isActiveMode;
+        
+        // Ensure renderer is only on if this mode is active
+        if (floorHighlight != null && floorHighlight.enabled != isActiveMode)
+        {
+            floorHighlight.enabled = isActiveMode;
+        }
 
         if (!isActiveMode) return; 
 
         var state = NetworkMatchManager.Instance.currentState.Value;
+        Color targetColor = idleColor;
         
+        // If assigned and waiting for players, calculate the target color
         if (assignedClientId.Value != 999 && (state == NetworkMatchManager.MatchState.WaitingForPositions || state == NetworkMatchManager.MatchState.Countdown))
         {
-            Color displayColor = isBoothOccupied.Value ? (assignedColor.Value * readyColorMultiplier) : assignedColor.Value;
-            displayColor.a = 0.6f; 
-            ApplyColor(displayColor);
+            targetColor = isBoothOccupied.Value ? (assignedColor.Value * readyColorMultiplier) : assignedColor.Value;
+            targetColor.a = 0.6f; 
         }
-        else
+
+        // Only push to the graphics card if the color ACTUALLY changed this frame
+        if (targetColor != lastAppliedColor)
         {
-            ApplyColor(idleColor);
+            lastAppliedColor = targetColor;
+            ApplyColor(targetColor);
         }
     }
 
     private void ApplyColor(Color c)
     {
-        if (floorHighlight != null)
-        {
-            floorHighlight.material.color = c;
-            if (floorHighlight.material.HasProperty("_BaseColor"))
-                floorHighlight.material.SetColor("_BaseColor", c);
-        }
+        if (floorHighlight == null) return;
+        
+        if (propBlock == null) propBlock = new MaterialPropertyBlock();
+        
+        // Using a PropertyBlock changes the color without cloning the material
+        floorHighlight.GetPropertyBlock(propBlock);
+        propBlock.SetColor("_BaseColor", c); // URP / HDRP support
+        propBlock.SetColor("_Color", c);     // Standard Shader support
+        floorHighlight.SetPropertyBlock(propBlock);
     }
 
     private void OnTriggerEnter(Collider other)
     {
         if (!IsServer) return; 
-        
         if (NetworkMatchManager.Instance.currentGameMode.Value != boothMode) return;
         
         if (other.TryGetComponent(out NetworkPlayerMovement player))

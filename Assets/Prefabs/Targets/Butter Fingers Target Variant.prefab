@@ -1,0 +1,146 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1001 &1415764173171705052
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 0}
+    m_Modifications:
+    - target: {fileID: 2545942859325487302, guid: 4fa6916352ecb364eb51ffcbe6246acf, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 7ed2937f83f598c4595fbca6fc6c7206, type: 2}
+    - target: {fileID: 2712712637734677519, guid: 4fa6916352ecb364eb51ffcbe6246acf, type: 3}
+      propertyPath: GlobalObjectIdHash
+      value: 1952545910
+      objectReference: {fileID: 0}
+    - target: {fileID: 2712712637734677519, guid: 4fa6916352ecb364eb51ffcbe6246acf, type: 3}
+      propertyPath: InScenePlacedSourceGlobalObjectIdHash
+      value: 2364661560
+      objectReference: {fileID: 0}
+    - target: {fileID: 5086690906028349091, guid: 4fa6916352ecb364eb51ffcbe6246acf, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: -2.754
+      objectReference: {fileID: 0}
+    - target: {fileID: 5086690906028349091, guid: 4fa6916352ecb364eb51ffcbe6246acf, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 2.2769997
+      objectReference: {fileID: 0}
+    - target: {fileID: 5086690906028349091, guid: 4fa6916352ecb364eb51ffcbe6246acf, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 3.997
+      objectReference: {fileID: 0}
+    - target: {fileID: 5086690906028349091, guid: 4fa6916352ecb364eb51ffcbe6246acf, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: -0.6123696
+      objectReference: {fileID: 0}
+    - target: {fileID: 5086690906028349091, guid: 4fa6916352ecb364eb51ffcbe6246acf, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0.35355514
+      objectReference: {fileID: 0}
+    - target: {fileID: 5086690906028349091, guid: 4fa6916352ecb364eb51ffcbe6246acf, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0.61237514
+      objectReference: {fileID: 0}
+    - target: {fileID: 5086690906028349091, guid: 4fa6916352ecb364eb51ffcbe6246acf, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: -0.3535519
+      objectReference: {fileID: 0}
+    - target: {fileID: 5086690906028349091, guid: 4fa6916352ecb364eb51ffcbe6246acf, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 5086690906028349091, guid: 4fa6916352ecb364eb51ffcbe6246acf, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: -90.001
+      objectReference: {fileID: 0}
+    - target: {fileID: 5086690906028349091, guid: 4fa6916352ecb364eb51ffcbe6246acf, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 60
+      objectReference: {fileID: 0}
+    - target: {fileID: 5507439998276628450, guid: 4fa6916352ecb364eb51ffcbe6246acf, type: 3}
+      propertyPath: m_Name
+      value: Butter Fingers Target Variant
+      objectReference: {fileID: 0}
+    m_RemovedComponents:
+    - {fileID: 13210126335323812, guid: 4fa6916352ecb364eb51ffcbe6246acf, type: 3}
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 5507439998276628450, guid: 4fa6916352ecb364eb51ffcbe6246acf, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 4610330509406739504}
+  m_SourcePrefab: {fileID: 100100000, guid: 4fa6916352ecb364eb51ffcbe6246acf, type: 3}
+--- !u!23 &3526546695935917082 stripped
+MeshRenderer:
+  m_CorrespondingSourceObject: {fileID: 2545942859325487302, guid: 4fa6916352ecb364eb51ffcbe6246acf, type: 3}
+  m_PrefabInstance: {fileID: 1415764173171705052}
+  m_PrefabAsset: {fileID: 0}
+--- !u!1 &6902775214163209022 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 5507439998276628450, guid: 4fa6916352ecb364eb51ffcbe6246acf, type: 3}
+  m_PrefabInstance: {fileID: 1415764173171705052}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &4610330509406739504
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6902775214163209022}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 40fcc07fd086c6340ad536ea0273d922, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::HazardButterFingers
+  ShowTopMostFoldoutHeaderGroup: 1
+  health:
+    UpdateTraits:
+      MinSecondsBetweenUpdates: 0
+      MaxSecondsBetweenUpdates: 0
+    m_InternalValue: 1
+  maxHealth:
+    UpdateTraits:
+      MinSecondsBetweenUpdates: 0
+      MaxSecondsBetweenUpdates: 0
+    m_InternalValue: 1
+  onHealthChange:
+    m_PersistentCalls:
+      m_Calls: []
+  onDeath:
+    m_PersistentCalls:
+      m_Calls: []
+  lastAttackerId: 0
+  targetCategory: 0
+  scorePopupPrefab: {fileID: 2143015114065681700, guid: cf74eafd59fe82141b76983f3c399ba1, type: 3}
+  standardPopupColor: {r: 1, g: 1, b: 1, a: 1}
+  goldenPopupColor: {r: 1, g: 0.8, b: 0, a: 1}
+  bombPopupColor: {r: 1, g: 0.2, b: 0.2, a: 1}
+  powerupPopupColor: {r: 0, g: 1, b: 1, a: 1}
+  allowedSizes: 00000000010000000200000003000000
+  ropeRenderer: {fileID: 0}
+  wallLayer:
+    serializedVersion: 2
+    m_Bits: 2560
+  maxRopeDistance: 5
+  baseScoreValue: 150
+  despawnDelayAfterDeath: 2
+  targetSize:
+    UpdateTraits:
+      MinSecondsBetweenUpdates: 0
+      MaxSecondsBetweenUpdates: 0
+    m_InternalValue: 1
+  targetOwnerClientId:
+    UpdateTraits:
+      MinSecondsBetweenUpdates: 0
+      MaxSecondsBetweenUpdates: 0
+    m_InternalValue: 999
+  targetColor:
+    UpdateTraits:
+      MinSecondsBetweenUpdates: 0
+      MaxSecondsBetweenUpdates: 0
+    m_InternalValue: {r: 1, g: 1, b: 1, a: 1}
+  targetRenderer: {fileID: 3526546695935917082}
+  effectDuration: 5

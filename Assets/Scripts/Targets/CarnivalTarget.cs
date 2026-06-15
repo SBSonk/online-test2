@@ -1,6 +1,6 @@
 using Unity.Netcode;
 using UnityEngine;
-using DG.Tweening; // --- NEW: Added so we can animate the popup here! ---
+using DG.Tweening; 
 
 public abstract class CarnivalTarget : NetworkHasHealth
 {
@@ -11,12 +11,11 @@ public abstract class CarnivalTarget : NetworkHasHealth
     public TargetCategory targetCategory = TargetCategory.Standard;
     public DamagePopup scorePopupPrefab; 
     public Color standardPopupColor = Color.white;
-    public Color goldenPopupColor = new Color(1f, 0.8f, 0f); // Bright Gold/Yellow
-    public Color bombPopupColor = new Color(1f, 0.2f, 0.2f); // Red
-    public Color powerupPopupColor = new Color(0f, 1f, 1f); // Cyan
+    public Color goldenPopupColor = new Color(1f, 0.8f, 0f); 
+    public Color bombPopupColor = new Color(1f, 0.2f, 0.2f); 
+    public Color powerupPopupColor = new Color(0f, 1f, 1f); 
 
     [Header("Size Randomization")]
-    [Tooltip("The server will pick a random size from this list when spawning. (e.g., Only put Small/Regular for Golden Targets)")]
     public TargetSize[] allowedSizes = { TargetSize.Small, TargetSize.Regular, TargetSize.Large, TargetSize.XL };
 
     [Header("Rope Settings")]
@@ -55,7 +54,6 @@ public abstract class CarnivalTarget : NetworkHasHealth
         if (targetCollider != null) targetCollider.enabled = true;
         if (movementScript != null) movementScript.enabled = true;
 
-        // --- THE FIX: Targets now roll their own random sizes on the Server! ---
         if (IsServer && allowedSizes != null && allowedSizes.Length > 0)
         {
             targetSize.Value = allowedSizes[Random.Range(0, allowedSizes.Length)];
@@ -160,12 +158,10 @@ public abstract class CarnivalTarget : NetworkHasHealth
         DamagePopup popup = Instantiate(scorePopupPrefab, spawnPos, Quaternion.identity);
         popup.InitializeScore(pointsAwarded, textColor);
 
-        // --- THE FIX: We animate it and destroy it directly here! ---
         popup.transform.localScale = Vector3.zero;
         popup.transform.DOScale(Vector3.one, 0.3f).SetEase(Ease.OutBack);
         popup.transform.DOMoveY(popup.transform.position.y + 1.5f, 1.2f).SetEase(Ease.OutQuad);
         
-        // Destroys the popup after 1.2 seconds so it doesn't clutter your game
         Destroy(popup.gameObject, 1.2f); 
     }
 
@@ -195,11 +191,7 @@ public abstract class CarnivalTarget : NetworkHasHealth
 
         if (NetworkManager.Singleton.ConnectedClients.TryGetValue(shooterClientId, out NetworkClient client))
         {
-            if (client.PlayerObject.TryGetComponent(out NetworkBalloonShooter shooter))
-            {
-                if (shooter.doublePointsTimer > 0) pointsToAward *= 2; 
-            }
-
+            // The old double points logic is now completely removed!
             if (client.PlayerObject.TryGetComponent(out NetworkPlayerScore scoreSystem))
             {
                 scoreSystem.AddPoints(pointsToAward);

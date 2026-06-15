@@ -8,7 +8,7 @@ using NaughtyAttributes;
 public struct PowerupIconMapping
 {
     public string powerupName; 
-    public string description; // <--- NEW: Added for the DOTween popup
+    public string description;
     public Sprite icon;        
 }
 
@@ -21,9 +21,7 @@ public class PowerupHUD : MonoBehaviour
     public Transform powerupContainer; 
 
     [Header("Popup Announcement References")]
-    [Tooltip("The DOTween popup prefab that appears in the center of the screen.")]
     public GameObject announcementPrefab; 
-    [Tooltip("Usually just the HUDCanvas itself, so it spawns in the middle of the screen.")]
     public Transform announcementContainer;
 
     [Header("Icon Settings")]
@@ -37,10 +35,11 @@ public class PowerupHUD : MonoBehaviour
         else Destroy(gameObject);
     }
 
-    public void UpdatePowerupDisplay(string powerupName, float timeLeft, int shotsLeft, bool isTimeBased)
+    // --- THE FIX: Simplified parameters to strictly handle Time! ---
+    public void UpdatePowerupDisplay(string powerupName, float timeLeft)
     {
         // 1. Deletion Phase
-        if ((isTimeBased && timeLeft <= 0) || (!isTimeBased && shotsLeft <= 0))
+        if (timeLeft <= 0)
         {
             if (activePowerups.ContainsKey(powerupName))
             {
@@ -50,13 +49,11 @@ public class PowerupHUD : MonoBehaviour
             return;
         }
 
-        // 2. Spawning Phase (IT'S A NEW POWERUP!)
+        // 2. Spawning Phase
         if (!activePowerups.ContainsKey(powerupName))
         {
-            // Look up the specific struct for this powerup to get the description and icon
             bool foundMapping = TryGetMapping(powerupName, out PowerupIconMapping mapping);
 
-            // --- 2A. Trigger the Flashy DOTween Announcement ---
             if (announcementPrefab != null && announcementContainer != null)
             {
                 GameObject popup = Instantiate(announcementPrefab, announcementContainer);
@@ -68,7 +65,6 @@ public class PowerupHUD : MonoBehaviour
                 }
             }
 
-            // --- 2B. Spawn the actual HUD icon that stays at the bottom ---
             GameObject newUI = Instantiate(powerupUIPrefab, powerupContainer);
             TMP_Text textComponent = newUI.GetComponentInChildren<TMP_Text>();
             activePowerups.Add(powerupName, textComponent);
@@ -84,17 +80,10 @@ public class PowerupHUD : MonoBehaviour
         }
 
         // 3. Update Text Phase
-        if (isTimeBased)
-        {
-            activePowerups[powerupName].text = $"{powerupName}\n{timeLeft:F1}s";
-        }
-        else
-        {
-            activePowerups[powerupName].text = $"{powerupName}\n{shotsLeft} Shots";
-        }
+        // --- THE FIX: Only display the raw time remaining! ---
+        activePowerups[powerupName].text = $"{timeLeft:F1}s";
     }
 
-    // --- NEW: Helper method safely returns the whole struct instead of just the sprite ---
     private bool TryGetMapping(string name, out PowerupIconMapping result)
     {
         foreach (var mapping in iconMappings)
@@ -110,11 +99,8 @@ public class PowerupHUD : MonoBehaviour
     }
 
     [Header("Debug & Testing")]
-    [Tooltip("Type the exact name of a powerup from your Icon Mappings list to test it.")]
     public string testPowerupName = "Rapid Fire";
     public float testDuration = 10f;
-    public int testShots = 0;
-    public bool testIsTimeBased = true;
 
     [Button("Test Spawn Powerup")]
     private void TestSpawnPowerup()
@@ -125,6 +111,6 @@ public class PowerupHUD : MonoBehaviour
             return;
         }
 
-        UpdatePowerupDisplay(testPowerupName, testDuration, testShots, testIsTimeBased);
+        UpdatePowerupDisplay(testPowerupName, testDuration);
     }
 }

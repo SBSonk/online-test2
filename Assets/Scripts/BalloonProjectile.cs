@@ -3,28 +3,37 @@ using UnityEngine;
 
 public class BalloonProjectile : NetworkBehaviour
 {
+    public enum HitSoundType { Pop, Bounce, Lead }
+
     [Header("References")]
-    public GameObject balloonMesh;
-    public Renderer balloonRenderer; 
-    public ParticleSystem popParticles;
+    public BalloonVisuals visuals; 
     
+    [Header("Audio")]
+    public AudioSource audioSource;
+    public AudioClip popSound;       // Standard hit on a player/target
+    public AudioClip bounceSound;    // Squeak/Thud when hitting a wall/floor
+    public AudioClip leadHitSound;   // Heavy metallic clank for lead balloons
+
     [Header("Settings")]
     public float autoDestroyTime = 5f;
-    public float damage = 10f; 
+    public float damage = 10f;  
     public float knockbackForce = 25f; 
     public float upwardKnockback = 8f; 
 
-    [Header("Magnetism")]
+    [Header("Magnetism & Modifiers")]
     public NetworkVariable<bool> isMagnetic = new NetworkVariable<bool>(false);
+    public NetworkVariable<bool> isLeadBalloon = new NetworkVariable<bool>(false); // --- NEW: Tracks if this is heavy! ---
     public float magnetRadius = 8f;
     public float magnetForce = 20f;
-    public LayerMask targetLayer; // Make sure to set this to your Target Layer in Inspector!
+    public LayerMask targetLayer;
 
     public NetworkVariable<Color> syncedBalloonColor = new NetworkVariable<Color>();
     public NetworkVariable<Color> syncedParticleColor = new NetworkVariable<Color>();
     
     private bool hasPopped = false;
     private Rigidbody rb;
+    
+    private Transform lockedTarget = null; 
 
     public override void OnNetworkSpawn()
     {
@@ -35,41 +44,65 @@ public class BalloonProjectile : NetworkBehaviour
         syncedBalloonColor.OnValueChanged += (oldVal, newVal) => ApplyVisuals();
         ApplyVisuals(); 
 
+        if (visuals != null) visuals.currentState = BalloonVisuals.BalloonState.InAir;
+
         IgnoreOwnerCollisions();
     }
 
-    // --- NEW: Physics Homing Logic ---
+    private void Update()
+    {
+        if (visuals != null && rb != null && !hasPopped)
+        {
+            visuals.simulatedVelocity = rb.linearVelocity.magnitude;
+        }
+    }
+
     private void FixedUpdate()
     {
-        // Only the server calculates physics movement. 
-        // This keeps the movement synced for all clients.
-        if (!IsServer || !isMagnetic.Value || hasPopped) return;
+        if (!IsServer || hasPopped) return;
 
-        // Find targets in range
-        Collider[] hits = Physics.OverlapSphere(transform.position, magnetRadius, targetLayer);
-        
-        Transform closestTarget = null;
-        float closestDistance = Mathf.Infinity;
-
-        foreach (var hit in hits)
+        // 1. Magnetism Logic
+        if (isMagnetic.Value)
         {
-            // We check for CarnivalTarget (or whatever component your targets use)
-            if (hit.TryGetComponent(out CarnivalTarget target))
+            if (lockedTarget == null)
             {
-                float dist = Vector3.Distance(transform.position, hit.transform.position);
-                if (dist < closestDistance)
+                Collider[] hits = Physics.OverlapSphere(transform.position, magnetRadius, targetLayer);
+                float closestDistance = Mathf.Infinity;
+
+                foreach (var hit in hits)
                 {
-                    closestDistance = dist;
-                    closestTarget = hit.transform;
+                    if (hit.TryGetComponent(out CarnivalTarget target))
+                    {
+                        if (target.targetCategory == CarnivalTarget.TargetCategory.Bomb) continue;
+
+                        float dist = Vector3.Distance(transform.position, hit.transform.position);
+                        if (dist < closestDistance)
+                        {
+                            closestDistance = dist;
+                            lockedTarget = hit.transform;
+                        }
+                    }
                 }
             }
-        }
 
-        // Apply force toward the closest target
-        if (closestTarget != null)
+            // --- NEW: Toggle Gravity based on Homing State ---
+            if (lockedTarget != null)
+            {
+                if (rb.useGravity) rb.useGravity = false; // Turn off gravity when homing
+                
+                Vector3 direction = (lockedTarget.position - transform.position).normalized;
+                rb.AddForce(direction * magnetForce, ForceMode.Acceleration);
+            }
+            else
+            {
+                // Ensure gravity is back on if we lose the target
+                if (!rb.useGravity) rb.useGravity = true;
+            }
+        }
+        else
         {
-            Vector3 direction = (closestTarget.position - transform.position).normalized;
-            rb.AddForce(direction * magnetForce, ForceMode.Acceleration);
+            // Ensure gravity is always on if magnetism is off
+            if (!rb.useGravity) rb.useGravity = true;
         }
     }
 
@@ -92,17 +125,9 @@ public class BalloonProjectile : NetworkBehaviour
 
     private void ApplyVisuals()
     {
-        if (balloonRenderer != null) 
+        if (visuals != null) 
         {
-            balloonRenderer.material.color = syncedBalloonColor.Value;
-            if (balloonRenderer.material.HasProperty("_BaseColor"))
-                balloonRenderer.material.SetColor("_BaseColor", syncedBalloonColor.Value);
-        }
-            
-        if (popParticles != null)
-        {
-            var main = popParticles.main;
-            main.startColor = syncedParticleColor.Value;
+            visuals.ApplyColor(syncedBalloonColor.Value);
         }
     }
 
@@ -111,14 +136,17 @@ public class BalloonProjectile : NetworkBehaviour
         if (!IsServer || hasPopped) return;
         hasPopped = true;
 
-        TriggerPopClientRpc();
+        bool hitValidTarget = false;
 
+        // Check if we hit a player
         if (collision.gameObject.TryGetComponent(out NetworkHasHealth health))
         {
             health.TakeDamage((int)damage, OwnerClientId);
             NotifyHitRpc();
+            hitValidTarget = true;
         }
 
+        // Check if we hit a player movement controller (for knockback)
         if (collision.gameObject.TryGetComponent(out NetworkPlayerMovement playerMove))
         {
             Vector3 knockbackDir = transform.forward;
@@ -128,20 +156,58 @@ public class BalloonProjectile : NetworkBehaviour
 
             playerMove.TakeBalloonHit(finalForce, syncedBalloonColor.Value);
             NotifyHitRpc();
+            hitValidTarget = true;
         }
+
+        // Check if we hit a standard target
+        if (collision.gameObject.TryGetComponent(out CarnivalTarget target))
+        {
+            hitValidTarget = true;
+        }
+
+        // --- NEW: Determine which sound to play based on the impact ---
+        HitSoundType soundToPlay = HitSoundType.Bounce; // Default to wall squeak
+
+        if (isLeadBalloon.Value) 
+        {
+            soundToPlay = HitSoundType.Lead; // Lead overrides everything
+        }
+        else if (hitValidTarget)
+        {
+            soundToPlay = HitSoundType.Pop; // We hit something breakable/damaging!
+        }
+
+        // Tell all clients to play the visuals AND the correct sound
+        TriggerPopClientRpc(soundToPlay);
 
         Invoke(nameof(DestroyBalloon), 1f);
     }
 
     [Rpc(SendTo.Everyone)]
-    private void TriggerPopClientRpc()
+    private void TriggerPopClientRpc(HitSoundType soundType)
     {
         if (TryGetComponent(out Rigidbody rb)) rb.isKinematic = true;
-        if (balloonMesh != null) balloonMesh.SetActive(false);
-        if (popParticles != null) 
+        
+        if (visuals != null) 
         {
-            popParticles.gameObject.SetActive(true);
-            popParticles.Play();
+            visuals.TestPop(); 
+        }
+
+        // --- NEW: Play the correct sound ---
+        if (audioSource != null)
+        {
+            switch (soundType)
+            {
+                case HitSoundType.Pop:
+                    if (popSound != null) audioSource.PlayOneShot(popSound);
+                    break;
+                case HitSoundType.Bounce:
+                    if (bounceSound != null) audioSource.PlayOneShot(bounceSound);
+                    break;
+                case HitSoundType.Lead:
+                    if (leadHitSound != null) audioSource.PlayOneShot(leadHitSound);
+                    break;
+            }
         }
     }
 

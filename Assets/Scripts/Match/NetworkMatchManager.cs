@@ -11,7 +11,6 @@ public class NetworkMatchManager : NetworkBehaviour
     public enum GameMode { ShootingGallery, PvP }
     public enum MatchState { Lobby, WaitingForPositions, Countdown, Active }
     
-    // --- NEW: Consolidated Powerup Mode Enum ---
     public enum PowerupMode { Off, On, Chaos }
 
     [Header("Match State (Synced)")]
@@ -25,6 +24,32 @@ public class NetworkMatchManager : NetworkBehaviour
     public GameAnnouncer announcer;
     public DiegeticLeaderboard leaderboard;
 
+    [Header("Music Settings")]
+    public AudioSource musicSource;
+    public float crossfadeDuration = 1.0f;
+    
+    [Header("Lobby Music")]
+    public AudioClip lobbyMusic;
+    [Range(0f, 1f)] public float lobbyVolume = 0.5f;
+
+    [Header("Waiting Music")]
+    public AudioClip waitingMusic; 
+    [Range(0f, 1f)] public float waitingVolume = 0.6f;
+
+    [Header("Active Match Music")]
+    public AudioClip activeMusic;  
+    [Range(0f, 1f)] public float activeVolume = 0.8f;
+
+    // --- Audio Ducking and Crossfade Variables ---
+    private AudioSource secondaryMusicSource;
+    private Coroutine crossfadeCoroutine;
+    private Coroutine duckingCoroutine;
+    
+    private float currentTrackBaseVolume = 0f;
+    private float secondaryTrackBaseVolume = 0f;
+    private float duckingMultiplier = 1f; 
+    private AudioClip currentMusicClip;
+
     [Header("Minigame Settings")]
     public int firstArrivalBonusPoints = 250;
     private bool isFirstArrivalAwarded = false; 
@@ -32,8 +57,6 @@ public class NetworkMatchManager : NetworkBehaviour
     [Header("Lobby Settings (Synced)")]
     public NetworkVariable<GameMode> currentGameMode = new NetworkVariable<GameMode>(GameMode.ShootingGallery);
     public NetworkVariable<float> matchDurationSetting = new NetworkVariable<float>(60f);
-    
-    // --- THE FIX: Replaced powerups/chaos with one consolidated setting ---
     public NetworkVariable<PowerupMode> powerupModeSetting = new NetworkVariable<PowerupMode>(PowerupMode.On);
 
     [Header("Spawner Settings (Synced)")]
@@ -56,15 +79,24 @@ public class NetworkMatchManager : NetworkBehaviour
     {
         if (Instance == null) Instance = this;
         else Destroy(gameObject);
+
+        if (musicSource != null)
+        {
+            secondaryMusicSource = gameObject.AddComponent<AudioSource>();
+            secondaryMusicSource.spatialBlend = musicSource.spatialBlend;
+            secondaryMusicSource.loop = true;
+            secondaryMusicSource.volume = 0f;
+        }
     }
 
     public override void OnNetworkSpawn()
     {
         currentGameMode.OnValueChanged += (o, n) => OnSettingsChanged?.Invoke();
         matchDurationSetting.OnValueChanged += (o, n) => OnSettingsChanged?.Invoke();
-        powerupModeSetting.OnValueChanged += (o, n) => OnSettingsChanged?.Invoke(); // Hooked up the new mode
+        powerupModeSetting.OnValueChanged += (o, n) => OnSettingsChanged?.Invoke(); 
         spawnIntervalSetting.OnValueChanged += (o, n) => OnSettingsChanged?.Invoke();
         targetSpeedSetting.OnValueChanged += (o, n) => OnSettingsChanged?.Invoke();
+        
         currentState.OnValueChanged += HandleStateChanged;
 
         if (IsServer)
@@ -72,6 +104,8 @@ public class NetworkMatchManager : NetworkBehaviour
             NetworkManager.Singleton.OnClientConnectedCallback += HandleClientConnectionChanged;
             NetworkManager.Singleton.OnClientDisconnectCallback += HandleClientConnectionChanged;
         }
+
+        UpdateMusicForState(currentState.Value);
     }
 
     public override void OnNetworkDespawn()
@@ -99,10 +133,128 @@ public class NetworkMatchManager : NetworkBehaviour
         if (newState == MatchState.WaitingForPositions) OnWaitingForPositions?.Invoke();
         if (newState == MatchState.Active) OnMatchStart?.Invoke();
         if (newState == MatchState.Lobby && oldState == MatchState.Active) OnMatchEnd?.Invoke();
+
+        UpdateMusicForState(newState);
+    }
+
+    // ==========================================
+    // MUSIC LOGIC (CROSSFADE & DUCKING)
+    // ==========================================
+    private void UpdateMusicForState(MatchState state)
+    {
+        if (musicSource == null || secondaryMusicSource == null) return;
+
+        AudioClip nextClip = null;
+        float targetVolume = 1f;
+
+        switch (state)
+        {
+            case MatchState.Lobby: 
+                nextClip = lobbyMusic; 
+                targetVolume = lobbyVolume;
+                break;
+            case MatchState.WaitingForPositions:
+            case MatchState.Countdown: 
+                nextClip = waitingMusic; 
+                targetVolume = waitingVolume;
+                break;
+            case MatchState.Active: 
+                nextClip = activeMusic; 
+                targetVolume = activeVolume;
+                break;
+        }
+
+        if (currentMusicClip == null)
+        {
+            currentMusicClip = nextClip;
+            musicSource.clip = nextClip;
+            musicSource.Play();
+            currentTrackBaseVolume = targetVolume;
+        }
+        else if (nextClip != null && currentMusicClip != nextClip)
+        {
+            currentMusicClip = nextClip;
+            
+            if (crossfadeCoroutine != null) StopCoroutine(crossfadeCoroutine);
+            crossfadeCoroutine = StartCoroutine(CrossfadeRoutine(nextClip, targetVolume));
+        }
+    }
+
+    private IEnumerator CrossfadeRoutine(AudioClip newClip, float targetVolume)
+    {
+        AudioSource fadingOut = musicSource;
+        AudioSource fadingIn = secondaryMusicSource;
+
+        fadingIn.clip = newClip;
+        fadingIn.time = 0f;
+        secondaryTrackBaseVolume = 0f; 
+        fadingIn.Play();
+
+        float t = 0f;
+        float startVolOut = currentTrackBaseVolume;
+
+        while (t < crossfadeDuration)
+        {
+            t += Time.deltaTime;
+            float percent = t / crossfadeDuration;
+            
+            // Crossfade math now respects the specific volume set in the inspector
+            secondaryTrackBaseVolume = Mathf.Lerp(0f, targetVolume, percent);
+            currentTrackBaseVolume = Mathf.Lerp(startVolOut, 0f, percent);
+            
+            yield return null;
+        }
+
+        fadingOut.Stop();
+
+        musicSource = fadingIn;
+        secondaryMusicSource = fadingOut;
+        
+        currentTrackBaseVolume = targetVolume;
+        secondaryTrackBaseVolume = 0f;
+    }
+
+    private void DuckMusicFor(float duration)
+    {
+        if (duckingCoroutine != null) StopCoroutine(duckingCoroutine);
+        duckingCoroutine = StartCoroutine(DuckingRoutine(duration));
+    }
+
+    private IEnumerator DuckingRoutine(float duration)
+    {
+        float targetDuckMult = 0.2f; 
+        float fadeOutTime = 0.15f;   
+        float fadeInTime = 0.5f;     
+
+        float t = 0f;
+        float startMult = duckingMultiplier;
+        while (t < fadeOutTime)
+        {
+            t += Time.deltaTime;
+            duckingMultiplier = Mathf.Lerp(startMult, targetDuckMult, t / fadeOutTime);
+            yield return null;
+        }
+        duckingMultiplier = targetDuckMult;
+
+        yield return new WaitForSeconds(duration);
+
+        t = 0f;
+        while (t < fadeInTime)
+        {
+            t += Time.deltaTime;
+            duckingMultiplier = Mathf.Lerp(targetDuckMult, 1f, t / fadeInTime);
+            yield return null;
+        }
+        duckingMultiplier = 1f;
     }
 
     private void Update()
     {
+        // 1. APPLY AUDIO VOLUMES LOCALLY FOR EVERYONE
+        if (musicSource != null) musicSource.volume = currentTrackBaseVolume * duckingMultiplier;
+        if (secondaryMusicSource != null) secondaryMusicSource.volume = secondaryTrackBaseVolume * duckingMultiplier;
+
+        // 2. SERVER LOGIC ONLY
         if (!IsServer) return;
 
         if (currentState.Value == MatchState.Countdown)
@@ -139,11 +291,9 @@ public class NetworkMatchManager : NetworkBehaviour
     {
         if (!IsServer) return;
 
-        // 1. Get every single booth in the scene
         PlayerBooth[] allBooths = FindObjectsByType<PlayerBooth>(FindObjectsSortMode.None);
         List<PlayerBooth> activeBooths = new List<PlayerBooth>();
 
-        // 2. Reset ALL booths, but only add the ones that match our GameMode to the active list
         foreach (var booth in allBooths)
         {
             booth.assignedClientId.Value = 999; 
@@ -153,7 +303,6 @@ public class NetworkMatchManager : NetworkBehaviour
             }
         }
 
-        // 3. Assign the filtered booths to the players!
         int boothIndex = 0;
         foreach (var clientId in NetworkManager.Singleton.ConnectedClientsIds)
         {
@@ -173,7 +322,7 @@ public class NetworkMatchManager : NetworkBehaviour
 
     private void ResetBooths()
     {
-        PlayerBooth[] allBooths = FindObjectsByType<PlayerBooth>();
+        PlayerBooth[] allBooths = FindObjectsByType<PlayerBooth>(FindObjectsSortMode.None);
         foreach (var booth in allBooths) 
         {
             booth.assignedClientId.Value = 999;
@@ -256,7 +405,7 @@ public class NetworkMatchManager : NetworkBehaviour
 
     private void EndMatch() 
     {
-        var allScores = FindObjectsByType<NetworkPlayerScore>(FindObjectsSortMode.None);
+        var allScores = FindObjectsByType<NetworkPlayerScore>();
         foreach(var score in allScores) score.IncrementGamesPlayed();
 
         TriggerAnnouncerMessageRpc("THAT'S ALL FOLKS!", 3f);
@@ -267,9 +416,35 @@ public class NetworkMatchManager : NetworkBehaviour
 
     private IEnumerator EndMatchRoutine()
     {
+        // Wait for the announcer message
         yield return new WaitForSeconds(3f);
+
+        // --- NEW: Smoothly fade out the active music before transitioning ---
+        if (musicSource != null)
+        {
+            StartCoroutine(FadeOutCurrentMusic(1.5f));
+        }
+
+        yield return new WaitForSeconds(1.5f);
+
         ResetBooths();
         currentState.Value = MatchState.Lobby;
+        // musicSource will naturally be replaced by the Lobby music when 
+        // the currentState OnValueChanged callback triggers UpdateMusicForState!
+    }
+
+    // --- NEW: Helper to fade out before switching tracks ---
+    private IEnumerator FadeOutCurrentMusic(float duration)
+    {
+        float startVol = currentTrackBaseVolume;
+        float t = 0f;
+        while (t < duration)
+        {
+            t += Time.deltaTime;
+            currentTrackBaseVolume = Mathf.Lerp(startVol, 0f, t / duration);
+            yield return null;
+        }
+        currentTrackBaseVolume = 0f;
     }
 
     // ==========================================
@@ -282,6 +457,8 @@ public class NetworkMatchManager : NetworkBehaviour
         if(announcer != null) 
         {
             string[] words = commaSeparatedWords.Split(',');
+            float totalDuration = (words.Length * delay) + 0.5f;
+            DuckMusicFor(totalDuration);
             announcer.AnnounceSequence(words, delay);
         }
     }
@@ -289,6 +466,7 @@ public class NetworkMatchManager : NetworkBehaviour
     [Rpc(SendTo.Everyone)]
     private void TriggerAnnouncerMessageRpc(string message, float duration) 
     {
+        DuckMusicFor(duration);
         if(announcer != null) announcer.ShowMessage(message, duration);
     }
 
@@ -308,7 +486,6 @@ public class NetworkMatchManager : NetworkBehaviour
     [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Everyone)]
     public void RequestSetDurationRpc(float newDuration) { if (currentState.Value == MatchState.Lobby) matchDurationSetting.Value = newDuration; }
 
-    // --- THE FIX: Replaced the old toggles with the consolidated Mode RPC ---
     [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Everyone)]
     public void RequestSetPowerupModeRpc(PowerupMode newMode) { if (currentState.Value == MatchState.Lobby) powerupModeSetting.Value = newMode; }
 

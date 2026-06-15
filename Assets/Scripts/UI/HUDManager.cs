@@ -33,25 +33,40 @@ public class HUDManager : MonoBehaviour
     public float hitmarkerStayTime = 0.1f;
 
     private NetworkBalloonShooter balloonShooter;
+    private float refreshTimer = 0f;
+    private Coroutine hitmarkerCoroutine;
+    private RectTransform containerRectTransform;
+
+    void Awake()
+    {
+        if (scoreboardContainer != null)
+        {
+            containerRectTransform = scoreboardContainer.GetComponent<RectTransform>();
+        }
+    }
 
     public void Initialize(NetworkBalloonShooter shooter)
     {
         this.balloonShooter = shooter;
         
         if (hitmarker != null) hitmarker.SetActive(false);
+        if (matchTimerText != null) matchTimerText.text = "";
         if (chargeBarFill != null) chargeBarFill.fillAmount = 0f;
 
         foreach (var textItem in spawnedScoreTexts)
         {
             textItem.gameObject.SetActive(false);
         }
+
+        // Refresh immediately so the scoreboard is visible the moment the player joins
+        RefreshScoreboardDisplay();
     }
 
     private void OnEnable()
     {
         if (NetworkMatchManager.Instance != null)
         {
-            NetworkMatchManager.Instance.currentState.OnValueChanged += (oldState, newState) => UpdateStateUI();
+            NetworkMatchManager.Instance.currentState.OnValueChanged += HandleMatchStateChanged;
         }
     }
 
@@ -59,20 +74,42 @@ public class HUDManager : MonoBehaviour
     {
         if (NetworkMatchManager.Instance != null)
         {
-            NetworkMatchManager.Instance.currentState.OnValueChanged -= (oldState, newState) => UpdateStateUI();
+            NetworkMatchManager.Instance.currentState.OnValueChanged -= HandleMatchStateChanged;
         }
+    }
+
+    private void HandleMatchStateChanged(NetworkMatchManager.MatchState oldState, NetworkMatchManager.MatchState newState)
+    {
+        UpdateStateUI();
     }
 
     void Update()
     {
         if (NetworkMatchManager.Instance == null) return;
 
-        var state = NetworkMatchManager.Instance.currentState.Value;
-
-        // Only update the HUD timer if the match is actively running
-        if (state == NetworkMatchManager.MatchState.Active)
+        // Refresh the scoreboard every 0.5 seconds for performance
+        refreshTimer += Time.deltaTime;
+        if (refreshTimer >= 0.5f)
         {
-            UpdateTimer(NetworkMatchManager.Instance.matchTimer.Value);
+            RefreshScoreboardDisplay();
+            refreshTimer = 0f;
+        }
+
+        var state = NetworkMatchManager.Instance.currentState.Value;
+        float timeRemaining = NetworkMatchManager.Instance.matchTimer.Value;
+
+        // ONLY show the timer if we are in the Active state AND the timer hasn't hit 0 yet
+        if (state == NetworkMatchManager.MatchState.Active && timeRemaining > 0)
+        {
+            UpdateTimer(timeRemaining);
+        }
+        else
+        {
+            // Wipe the text instantly if the match is over or we are in the lobby/countdown
+            if (matchTimerText != null && matchTimerText.text != "")
+            {
+                matchTimerText.text = "";
+            }
         }
         
         if (balloonShooter != null && chargeBarFill != null)
@@ -85,35 +122,26 @@ public class HUDManager : MonoBehaviour
     {
         var state = NetworkMatchManager.Instance.currentState.Value;
 
-        if (state == NetworkMatchManager.MatchState.Lobby)
+        // Wipe the timer text completely if the game isn't actively running
+        if (state != NetworkMatchManager.MatchState.Active)
         {
-            matchTimerText.text = "LOBBY";
-        }
-        else if (state != NetworkMatchManager.MatchState.Active)
-        {
-            // Clear the text during WaitingForPositions and Countdown. 
-            // The GameAnnouncer handles the visuals for these phases now!
-            matchTimerText.text = ""; 
+            if (matchTimerText != null) matchTimerText.text = ""; 
         }
 
         RefreshScoreboardDisplay();
     }
 
-    // --- Real-time Sort & Conditional Text Scaling ---
     public void RefreshScoreboardDisplay()
     {
         if (scoreboardContainer == null || scoreboardTextPrefab == null) return;
 
-        // 1. Gather all scores active across the network
-        NetworkPlayerScore[] allPlayerScores = Object.FindObjectsByType<NetworkPlayerScore>(FindObjectsSortMode.None);
+        NetworkPlayerScore[] allPlayerScores = Object.FindObjectsByType<NetworkPlayerScore>();
         List<NetworkPlayerScore> sortedScores = new List<NetworkPlayerScore>(allPlayerScores);
 
-        // 2. Sort list by highest score first (Descending order)
         sortedScores.Sort((a, b) => b.currentScore.Value.CompareTo(a.currentScore.Value));
 
         int totalPlayers = sortedScores.Count;
 
-        // 3. Maintain dynamic UI text pooling
         while (spawnedScoreTexts.Count < totalPlayers)
         {
             GameObject newObj = Instantiate(scoreboardTextPrefab, scoreboardContainer);
@@ -123,7 +151,6 @@ public class HUDManager : MonoBehaviour
             }
         }
 
-        // 4. Update elements matching sorted order indices
         for (int i = 0; i < spawnedScoreTexts.Count; i++)
         {
             if (i < totalPlayers)
@@ -132,9 +159,19 @@ public class HUDManager : MonoBehaviour
             }
             else
             {
-                // Deactivate residual layout objects if a player drops out mid-game
                 spawnedScoreTexts[i].gameObject.SetActive(false);
             }
+        }
+
+        // ====================================================================
+        // THE OVERLAP FIX:
+        // Forces Unity's Canvas and Layout systems to process text sizing data 
+        // right now instead of waiting a frame, snapping elements into order.
+        // ====================================================================
+        if (containerRectTransform != null)
+        {
+            Canvas.ForceUpdateCanvases();
+            LayoutRebuilder.ForceRebuildLayoutImmediate(containerRectTransform);
         }
     }
 
@@ -164,7 +201,7 @@ public class HUDManager : MonoBehaviour
         if (matchTimerText != null)
         {
             int seconds = Mathf.CeilToInt(timeRemaining);
-            matchTimerText.text = $"Time: {seconds:D2}s"; 
+            matchTimerText.text = seconds.ToString(); 
         }
     }
 
@@ -180,8 +217,9 @@ public class HUDManager : MonoBehaviour
     {
         if (gameObject.activeInHierarchy && hitmarker != null)
         {
-            StopAllCoroutines(); 
-            StartCoroutine(HitAnimation());
+            // FIXED: Isolated to a single tracked coroutine so it doesn't clear layout operations
+            if (hitmarkerCoroutine != null) StopCoroutine(hitmarkerCoroutine);
+            hitmarkerCoroutine = StartCoroutine(HitAnimation());
         }
     }
 
@@ -190,5 +228,6 @@ public class HUDManager : MonoBehaviour
         hitmarker.SetActive(true);
         yield return new WaitForSeconds(hitmarkerStayTime);
         hitmarker.SetActive(false);
+        hitmarkerCoroutine = null;
     }
 }

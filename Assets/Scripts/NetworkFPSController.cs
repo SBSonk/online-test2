@@ -1,6 +1,7 @@
 using Unity.Netcode;
 using UnityEngine;
 
+[RequireComponent(typeof(NetworkBalloonShooter))]
 public class NetworkFPSController : NetworkBehaviour
 {
     [Header("References")]
@@ -14,19 +15,24 @@ public class NetworkFPSController : NetworkBehaviour
     // Local tracking
     private float currentPitch = 0f;
     private float currentYaw = 0f;
+    private NetworkBalloonShooter shooter;
 
-    // NEW: We now sync BOTH directions ourselves using Owner-writable variables!
     public NetworkVariable<float> syncedPitch = new NetworkVariable<float>(0f, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
     public NetworkVariable<float> syncedYaw = new NetworkVariable<float>(0f, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
+
+    private void Awake()
+    {
+        shooter = GetComponent<NetworkBalloonShooter>();
+    }
 
     public override void OnNetworkSpawn()
     {
         if (IsOwner)
         {
+            // Force cursor lock immediately on spawn to prevent the "stuck" bug
             Cursor.lockState = CursorLockMode.Locked;
             Cursor.visible = false;
 
-            // Grab our starting rotation so we don't snap to 0 on spawn
             currentYaw = transform.eulerAngles.y;
             if (cameraRoot != null) currentPitch = cameraRoot.localEulerAngles.x;
         }
@@ -36,12 +42,22 @@ public class NetworkFPSController : NetworkBehaviour
     {
         if (IsOwner)
         {
-            HandleAiming();
+            // Only allow aiming if we are the owner AND the game is not paused
+            if (!PauseMenu.IsPaused)
+            {
+                // Ensure cursor is locked while playing
+                if (Cursor.lockState != CursorLockMode.Locked)
+                {
+                    Cursor.lockState = CursorLockMode.Locked;
+                    Cursor.visible = false;
+                }
+                
+                HandleAiming();
+            }
         }
         else
         {
-            // --- OPPONENT SCREEN ---
-            // If this is another player, apply THEIR synced rotations to their body and arms
+            // Remote player rotation logic for everyone else
             transform.rotation = Quaternion.Euler(0f, syncedYaw.Value, 0f);
             
             if (cameraRoot != null)
@@ -53,23 +69,29 @@ public class NetworkFPSController : NetworkBehaviour
 
     private void HandleAiming()
     {
-        // --- LOCAL SCREEN ---
         float mouseX = Input.GetAxis("Mouse X") * mouseSensitivity;
         float mouseY = Input.GetAxis("Mouse Y") * mouseSensitivity;
+
+        // Apply Brain Scramble Inversion if the timer is active
+        if (shooter != null && shooter.brainScrambleTimer > 0)
+        {
+            mouseX *= -1f;
+            mouseY *= -1f;
+        }
 
         currentPitch -= mouseY;
         currentPitch = Mathf.Clamp(currentPitch, -maxLookAngle, maxLookAngle);
         
         currentYaw += mouseX;
 
-        // Apply immediately to our own camera and body for that smooth Cinemachine feel!
+        // Apply local rotation
         transform.rotation = Quaternion.Euler(0f, currentYaw, 0f);
         if (cameraRoot != null)
         {
             cameraRoot.localEulerAngles = new Vector3(currentPitch, 0f, 0f);
         }
 
-        // Quietly update the network so everyone else sees us move
+        // Sync to other players
         syncedPitch.Value = currentPitch;
         syncedYaw.Value = currentYaw;
     }

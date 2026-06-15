@@ -3,9 +3,13 @@ using UnityEngine;
 
 public class HazardLeadBalloon : CarnivalTarget
 {
+    [Header("Hazard Settings")]
+    [Tooltip("How many seconds the opponent's balloons are incredibly heavy.")]
+    public float effectDuration = 6f;
+
     protected override void ApplySpecialEffect(ulong shooterClientId)
     {
-        NetworkBalloonShooter[] allShooters = FindObjectsByType<NetworkBalloonShooter>();
+        NetworkBalloonShooter[] allShooters = FindObjectsByType<NetworkBalloonShooter>(FindObjectsSortMode.None);
         
         foreach (var shooter in allShooters)
         {
@@ -16,8 +20,7 @@ public class HazardLeadBalloon : CarnivalTarget
                     Send = new ClientRpcSendParams { TargetClientIds = new ulong[] { shooter.OwnerClientId } }
                 };
                 
-                // Give their next 3 shots the extreme gravity debuff
-                shooter.ApplyLeadBalloonClientRpc(3, rpcParams);
+                shooter.ApplyLeadBalloonClientRpc(effectDuration, rpcParams);
             }
         }
     }

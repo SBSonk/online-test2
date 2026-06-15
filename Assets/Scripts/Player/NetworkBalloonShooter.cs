@@ -3,7 +3,6 @@ using UnityEngine;
 using UnityEngine.Events;
 using FirstGearGames.SmoothCameraShaker;
 using System.Collections;
-using NaughtyAttributes;
 using System.Collections.Generic;
 
 public class NetworkBalloonShooter : NetworkBehaviour
@@ -22,6 +21,12 @@ public class NetworkBalloonShooter : NetworkBehaviour
 
     [HideInInspector] public int currentShadeIndex = 0; 
 
+    [Header("Audio")]
+    public AudioSource playerAudioSource;
+    public AudioClip positivePowerupSound; 
+    public AudioClip negativePowerupSound; 
+    public AudioClip throwSound; // --- NEW: The physical throw/whoosh sound ---
+
     [Header("Throw Mechanics")]
     public float minThrowForce = 10f;
     public float maxThrowForce = 40f;
@@ -29,11 +34,7 @@ public class NetworkBalloonShooter : NetworkBehaviour
     public float upwardThrowBias = 2f; 
     public float throwCooldown = 0.65f; 
     public float windupTime = 0.25f; 
-    
-    [Tooltip("How long (in seconds) the game remembers an early click before the cooldown finishes.")]
     public float inputBufferWindow = 0.25f; 
-    
-    [Tooltip("Delay between releasing the button and the balloon actually spawning to sync with the animation.")]
     public float throwAnimationDelay = 0.15f; 
 
     [Header("Trajectory Preview")]
@@ -44,15 +45,15 @@ public class NetworkBalloonShooter : NetworkBehaviour
     public float trajectoryTimeStep = 0.1f;
 
     [Header("Active Powerups")]
-    public float doublePointsTimer = 0f; // Ensure this is here for your Golden Target!
     public float rapidFireTimer = 0f;
     public float magnetTimer = 0f;
-    public int clusterShotsRemaining = 0;
+    public float clusterTimer = 0f; 
 
     [Header("Active Hazards")]
     public float butterFingersTimer = 0f;
     public float butterFingersWaveSpeed = 4f; 
-    public int leadBalloonsRemaining = 0;
+    public float leadBalloonTimer = 0f; 
+    public float brainScrambleTimer = 0f;
 
     [Header("Multiplayer Visual Sync")]
     public NetworkVariable<bool> isPreparingThrowNet = new NetworkVariable<bool>(false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
@@ -64,7 +65,7 @@ public class NetworkBalloonShooter : NetworkBehaviour
     public float currentChargeTime = 0f;
     private float windupStartTime = 0f; 
     private float lastThrowTime = -100f; 
-    private float lastClickTime = -100f; // --- NEW: Tracks when the user pressed the button ---
+    private float lastClickTime = -100f; 
 
     [Header("Events")]
     public UnityEvent OnStartCharge;
@@ -86,10 +87,7 @@ public class NetworkBalloonShooter : NetworkBehaviour
 
     public void PickNextShade()
     {
-        if (IsOwner)
-        {
-            syncedShadeIndex.Value = Random.Range(0, 1000); 
-        }
+        if (IsOwner) syncedShadeIndex.Value = Random.Range(0, 1000); 
     }
 
     void Update()
@@ -97,28 +95,25 @@ public class NetworkBalloonShooter : NetworkBehaviour
         if (!IsOwner || !cameraTransform || !throwPoint) return;
 
         bool prep = isWindingUp || isCharging;
-        if (isPreparingThrowNet.Value != prep) 
-        {
-            isPreparingThrowNet.Value = prep;
-        }
+        if (isPreparingThrowNet.Value != prep) isPreparingThrowNet.Value = prep;
 
-        // 1. Tick down timers
-        if (doublePointsTimer > 0) doublePointsTimer -= Time.deltaTime;
         if (rapidFireTimer > 0) rapidFireTimer -= Time.deltaTime;
         if (magnetTimer > 0) magnetTimer -= Time.deltaTime;
+        if (clusterTimer > 0) clusterTimer -= Time.deltaTime; 
         if (butterFingersTimer > 0) butterFingersTimer -= Time.deltaTime; 
+        if (leadBalloonTimer > 0) leadBalloonTimer -= Time.deltaTime; 
+        if (brainScrambleTimer > 0) brainScrambleTimer -= Time.deltaTime; 
 
-        // 2. Update the UI HUD 
         if (PowerupHUD.Instance != null)
         {
-            PowerupHUD.Instance.UpdatePowerupDisplay("Rapid Fire", rapidFireTimer, 0, true);
-            PowerupHUD.Instance.UpdatePowerupDisplay("Magnet", magnetTimer, 0, true);
-            PowerupHUD.Instance.UpdatePowerupDisplay("Cluster", 0, clusterShotsRemaining, false);
-            PowerupHUD.Instance.UpdatePowerupDisplay("Lead Balloon", 0, leadBalloonsRemaining, false);
-            PowerupHUD.Instance.UpdatePowerupDisplay("Butter Fingers", butterFingersTimer, 0, true);
+            PowerupHUD.Instance.UpdatePowerupDisplay("Rapid Fire", rapidFireTimer);
+            PowerupHUD.Instance.UpdatePowerupDisplay("Magnet", magnetTimer);
+            PowerupHUD.Instance.UpdatePowerupDisplay("Cluster", clusterTimer);
+            PowerupHUD.Instance.UpdatePowerupDisplay("Lead Balloon", leadBalloonTimer);
+            PowerupHUD.Instance.UpdatePowerupDisplay("Butter Fingers", butterFingersTimer);
+            PowerupHUD.Instance.UpdatePowerupDisplay("Brain Scramble", brainScrambleTimer);
         }
 
-        // 3. Interlocks
         if ((playerInteract != null && playerInteract.IsHovering()) || 
             (playerMovement != null && playerMovement.isSprinting))
         {
@@ -126,7 +121,6 @@ public class NetworkBalloonShooter : NetworkBehaviour
             return;
         }
 
-        // 4. Standard throw logic
         HandleChargeInput();
     }
 
@@ -136,21 +130,14 @@ public class NetworkBalloonShooter : NetworkBehaviour
         float currentWindup = (rapidFireTimer > 0) ? windupTime * 0.25f : windupTime;
         float chargeSpeedMultiplier = (rapidFireTimer > 0) ? 3f : 1f;
 
-        // --- NEW: Register the exact moment the button was pressed ---
-        if (Input.GetKeyDown(KeyCode.Mouse0))
-        {
-            lastClickTime = Time.time;
-        }
-
-        // --- NEW: Check if the click happened within our buffer window ---
+        if (Input.GetKeyDown(KeyCode.Mouse0)) lastClickTime = Time.time;
         bool hasBufferedInput = (Time.time - lastClickTime) <= inputBufferWindow;
 
-        // --- NEW: Start windup if we have a buffered click, are STILL holding the button, and cooldown is done ---
         if (hasBufferedInput && Input.GetKey(KeyCode.Mouse0) && !isWindingUp && !isCharging && Time.time >= lastThrowTime + currentCooldown)
         {
             isWindingUp = true;
             windupStartTime = Time.time;
-            lastClickTime = -100f; // Consume the buffer so it doesn't double-trigger
+            lastClickTime = -100f; 
             
             if (handAnimator != null) handAnimator.SetThrowWindup(true); 
         }
@@ -190,10 +177,7 @@ public class NetworkBalloonShooter : NetworkBehaviour
             else if (isCharging) ExecuteThrow();
         }
 
-        if (!Input.GetKey(KeyCode.Mouse0) && (isWindingUp || isCharging))
-        {
-            CancelCharge();
-        }
+        if (!Input.GetKey(KeyCode.Mouse0) && (isWindingUp || isCharging)) CancelCharge();
     }
 
     private void CancelCharge()
@@ -212,7 +196,6 @@ public class NetworkBalloonShooter : NetworkBehaviour
         lastThrowTime = Time.time; 
         
         if (trajectoryLine != null) trajectoryLine.enabled = false;
-        
         if (handAnimator != null) 
         {
             handAnimator.SetThrowWindup(false);
@@ -220,9 +203,16 @@ public class NetworkBalloonShooter : NetworkBehaviour
         }
         OnThrow?.Invoke(); 
 
+        // --- NEW: Trigger the throw sound across the network ---
+        if (NetworkObject != null && NetworkObject.IsSpawned)
+        {
+            PlayThrowSoundRpc();
+        }
+
         float chargePercent = currentChargeTime / maxChargeTime;
+        bool isLead = leadBalloonTimer > 0;
         
-        float actualMaxForce = (leadBalloonsRemaining > 0) ? minThrowForce * 0.5f : maxThrowForce;
+        float actualMaxForce = isLead ? minThrowForce * 0.5f : maxThrowForce;
         float finalForce = Mathf.Lerp(minThrowForce, actualMaxForce, chargePercent);
 
         if (throwShakeProfile != null) CameraShakerHandler.Shake(throwShakeProfile);
@@ -232,13 +222,10 @@ public class NetworkBalloonShooter : NetworkBehaviour
         throwDirection.Normalize();
 
         GetCurrentBalloonColors(out Color bColor, out Color pColor);
-
-        bool useCluster = clusterShotsRemaining > 0;
-
-        StartCoroutine(ThrowWithDelayRoutine(throwPoint.position, throwDirection, finalForce, bColor, pColor, magnetTimer > 0, useCluster));
         
-        if (useCluster) clusterShotsRemaining--;
-        if (leadBalloonsRemaining > 0) leadBalloonsRemaining--; 
+        bool useCluster = clusterTimer > 0;
+
+        StartCoroutine(ThrowWithDelayRoutine(throwPoint.position, throwDirection, finalForce, bColor, pColor, magnetTimer > 0, useCluster, isLead));
         
         PickNextShade(); 
         currentChargeTime = 0f;
@@ -264,10 +251,10 @@ public class NetworkBalloonShooter : NetworkBehaviour
         }
     }
 
-    private IEnumerator ThrowWithDelayRoutine(Vector3 spawnPosition, Vector3 direction, float force, Color bColor, Color pColor, bool isMagnetic, bool isCluster)
+    private IEnumerator ThrowWithDelayRoutine(Vector3 spawnPosition, Vector3 direction, float force, Color bColor, Color pColor, bool isMagnetic, bool isCluster, bool isLead)
     {
         yield return new WaitForSeconds(throwAnimationDelay);
-        ThrowServerRpc(spawnPosition, direction, force, bColor, pColor, isMagnetic, isCluster);
+        ThrowServerRpc(spawnPosition, direction, force, bColor, pColor, isMagnetic, isCluster, isLead);
     }
 
     private void DrawTrajectory()
@@ -276,7 +263,7 @@ public class NetworkBalloonShooter : NetworkBehaviour
 
         float chargePercent = currentChargeTime / maxChargeTime;
         
-        float actualMaxForce = (leadBalloonsRemaining > 0) ? minThrowForce * 0.5f : maxThrowForce;
+        float actualMaxForce = (leadBalloonTimer > 0) ? minThrowForce * 0.5f : maxThrowForce;
         float finalForce = Mathf.Lerp(minThrowForce, actualMaxForce, chargePercent);
 
         Vector3 throwDirection = cameraTransform.forward;
@@ -335,30 +322,33 @@ public class NetworkBalloonShooter : NetworkBehaviour
     }
 
     [ServerRpc]
-    public void ThrowServerRpc(Vector3 spawnPosition, Vector3 direction, float force, Color bColor, Color pColor, bool isMagnetic, bool isCluster, ServerRpcParams rpcParams = default)
+    public void ThrowServerRpc(Vector3 spawnPosition, Vector3 direction, float force, Color bColor, Color pColor, bool isMagnetic, bool isCluster, bool isLead, ServerRpcParams rpcParams = default)
     {
         int balloonsToSpawn = isCluster ? 3 : 1;
-        
         List<Collider> spawnedColliders = new List<Collider>();
+
+        if (isLead)
+        {
+            bColor = new Color(0.6f, 0.6f, 0.65f); 
+            pColor = new Color(0.4f, 0.4f, 0.45f); 
+        }
 
         for (int i = 0; i < balloonsToSpawn; i++)
         {
             Vector3 finalDirection = direction;
-            if (isCluster && i > 0)
+            
+            if (isCluster)
             {
-                finalDirection = Quaternion.Euler(Random.Range(-10f, 10f), Random.Range(-15f, 15f), 0) * direction;
+                if (i == 1) finalDirection = Quaternion.Euler(Random.Range(-8f, 8f), Random.Range(-25f, -5f), 0) * direction;
+                else if (i == 2) finalDirection = Quaternion.Euler(Random.Range(-8f, 8f), Random.Range(5f, 25f), 0) * direction;
             }
 
             GameObject balloonInstance = Instantiate(balloonPrefab, spawnPosition, Quaternion.LookRotation(finalDirection));
-            
             Collider[] newCols = balloonInstance.GetComponentsInChildren<Collider>();
             
             foreach (Collider newCol in newCols)
             {
-                foreach (Collider existing in spawnedColliders)
-                {
-                    Physics.IgnoreCollision(newCol, existing);
-                }
+                foreach (Collider existing in spawnedColliders) Physics.IgnoreCollision(newCol, existing);
                 spawnedColliders.Add(newCol);
             }
 
@@ -368,6 +358,7 @@ public class NetworkBalloonShooter : NetworkBehaviour
                 proj.syncedBalloonColor.Value = bColor;
                 proj.syncedParticleColor.Value = pColor;
                 proj.isMagnetic.Value = isMagnetic; 
+                proj.isLeadBalloon.Value = isLead;
             }
 
             if (networkObj != null) networkObj.SpawnWithOwnership(rpcParams.Receive.SenderClientId);
@@ -377,15 +368,81 @@ public class NetworkBalloonShooter : NetworkBehaviour
         }
     }
 
-    [ClientRpc]
-    public void ApplyLeadBalloonClientRpc(int amount, ClientRpcParams rpcParams = default)
+    // ==========================================
+    // AUDIO HELPERS & RPCs
+    // ==========================================
+
+    [Rpc(SendTo.Everyone)]
+    private void PlayThrowSoundRpc()
     {
-        leadBalloonsRemaining += amount;
+        if (playerAudioSource != null && throwSound != null)
+        {
+            // Using a slightly randomized pitch makes rapid-fire throws sound organic, not robotic
+            playerAudioSource.pitch = Random.Range(0.9f, 1.1f);
+            playerAudioSource.PlayOneShot(throwSound);
+            
+            // Reset pitch back to normal so it doesn't mess up the powerup sounds
+            playerAudioSource.pitch = 1f; 
+        }
     }
 
-    [ClientRpc]
-    public void ApplyButterFingersClientRpc(float duration, ClientRpcParams rpcParams = default)
+    private void PlayPowerupSound(bool isPositive)
     {
-        butterFingersTimer += duration;
+        if (!IsOwner) return;
+
+        if (playerAudioSource != null)
+        {
+            AudioClip clipToPlay = isPositive ? positivePowerupSound : negativePowerupSound;
+            if (clipToPlay != null)
+            {
+                playerAudioSource.PlayOneShot(clipToPlay);
+            }
+        }
+    }
+
+    // ==========================================
+    // TARGETED CLIENT RPCs
+    // ==========================================
+
+    [ClientRpc] 
+    public void ApplyButterFingersClientRpc(float duration, ClientRpcParams rpcParams = default) 
+    { 
+        butterFingersTimer += duration; 
+        PlayPowerupSound(false);
+    }
+    
+    [ClientRpc] 
+    public void ApplyRapidFireClientRpc(float duration, ClientRpcParams rpcParams = default) 
+    { 
+        rapidFireTimer += duration; 
+        PlayPowerupSound(true);
+    }
+    
+    [ClientRpc] 
+    public void ApplyMagnetClientRpc(float duration, ClientRpcParams rpcParams = default) 
+    { 
+        magnetTimer += duration; 
+        PlayPowerupSound(true);
+    }
+    
+    [ClientRpc] 
+    public void ApplyBrainScrambleClientRpc(float duration, ClientRpcParams rpcParams = default) 
+    { 
+        brainScrambleTimer += duration; 
+        PlayPowerupSound(false);
+    }
+    
+    [ClientRpc] 
+    public void ApplyLeadBalloonClientRpc(float duration, ClientRpcParams rpcParams = default) 
+    { 
+        leadBalloonTimer += duration; 
+        PlayPowerupSound(false);
+    }
+    
+    [ClientRpc] 
+    public void ApplyClusterClientRpc(float duration, ClientRpcParams rpcParams = default) 
+    { 
+        clusterTimer += duration; 
+        PlayPowerupSound(true);
     }
 }

@@ -9,6 +9,9 @@ public class BalloonVisuals : MonoBehaviour
     [Tooltip("Assign the child object containing the MeshRenderer here. Do NOT scale the root object with the collider.")]
     public Transform balloonMesh;
     public ParticleSystem popParticles;
+    
+    // --- NEW: Trail Renderer Reference ---
+    public TrailRenderer flightTrail; 
 
     [Header("State Testing")]
     [OnValueChanged("OnStateChanged")]
@@ -38,11 +41,20 @@ public class BalloonVisuals : MonoBehaviour
         {
             originalScale = balloonMesh.localScale;
         }
+        
+        // Ensure the trail starts off
+        if (flightTrail != null) flightTrail.emitting = false;
     }
 
     void Update()
     {
         if (balloonMesh == null) return;
+
+        // --- NEW: Automatically toggle the trail based on the current state ---
+        if (flightTrail != null)
+        {
+            flightTrail.emitting = (currentState == BalloonState.InAir);
+        }
 
         switch (currentState)
         {
@@ -61,6 +73,38 @@ public class BalloonVisuals : MonoBehaviour
 
             case BalloonState.Popped:
                 break;
+        }
+    }
+
+    // --- NEW: Call this from your BalloonProjectile script when it receives its network color! ---
+    public void ApplyColor(Color mainColor)
+    {
+        // --- THE MISSING PIECE: Actually color the Balloon Mesh! ---
+        if (balloonMesh != null && balloonMesh.TryGetComponent(out Renderer renderer))
+        {
+            renderer.material.color = mainColor;
+            
+            // URP/HDRP support
+            if (renderer.material.HasProperty("_BaseColor"))
+                renderer.material.SetColor("_BaseColor", mainColor);
+                
+            // HDR Emission Glow support
+            if (renderer.material.HasProperty("_EmissionColor"))
+                renderer.material.SetColor("_EmissionColor", mainColor);
+        }
+
+        // 1. Color the Trail
+        if (flightTrail != null)
+        {
+            flightTrail.startColor = mainColor;
+            flightTrail.endColor = new Color(mainColor.r, mainColor.g, mainColor.b, 0f); 
+        }
+
+        // 2. Color the Pop Particles
+        if (popParticles != null)
+        {
+            var main = popParticles.main;
+            main.startColor = mainColor;
         }
     }
 
@@ -132,6 +176,8 @@ public class BalloonVisuals : MonoBehaviour
             balloonMesh.gameObject.SetActive(true);
             balloonMesh.localScale = originalScale;
         }
+
+        if (flightTrail != null) flightTrail.Clear(); // Clears the old trail lines instantly
     }
 
     private void OnStateChanged()

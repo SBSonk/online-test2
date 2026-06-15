@@ -5,8 +5,15 @@ using System.Collections;
 
 public class GameAnnouncer : MonoBehaviour
 {
+    [Header("UI References")]
     public TMP_Text announcerText;
     public CanvasGroup canvasGroup;
+
+    [Header("Audio References")]
+    public AudioSource audioSource;
+    public AudioClip getToBoothsClip;
+    public AudioClip countdownClip; // Covers "3... 2... 1... GO!"
+    public AudioClip thatsAllFolksClip;
 
     // Use this for "GET", "TO", "YOUR", "BOOTHS!"
     public void AnnounceSequence(string[] words, float delayBetweenWords)
@@ -16,6 +23,12 @@ public class GameAnnouncer : MonoBehaviour
         canvasGroup.DOKill();
         announcerText.transform.DOKill();
         
+        // Play the clip right as the sequence starts
+        if (audioSource != null && getToBoothsClip != null && words.Length > 0 && words[0] == "GET")
+        {
+            audioSource.PlayOneShot(getToBoothsClip);
+        }
+
         StartCoroutine(WordByWordRoutine(words, delayBetweenWords));
     }
 
@@ -42,6 +55,20 @@ public class GameAnnouncer : MonoBehaviour
         StopAllCoroutines();
         canvasGroup.DOKill();
         announcerText.transform.DOKill();
+
+        // --- AUDIO ROUTING ---
+        if (audioSource != null)
+        {
+            // Only trigger the countdown audio when the sequence STARTS at "3"
+            if (message == "3" && countdownClip != null) 
+            {
+                audioSource.PlayOneShot(countdownClip);
+            }
+            else if (message == "THAT'S ALL FOLKS!" && thatsAllFolksClip != null) 
+            {
+                audioSource.PlayOneShot(thatsAllFolksClip);
+            }
+        }
 
         announcerText.text = message;
         announcerText.transform.localScale = Vector3.one;

@@ -4,6 +4,10 @@ using UnityEngine.Events;
 [RequireComponent(typeof(Outline))]
 public class Interactable : MonoBehaviour
 {
+    [Header("Base Audio Feedback")]
+    public AudioSource interactAudioSource;
+    public AudioClip interactSound;
+
     public UnityEvent OnHoverBegin, OnHoverUpdate, OnHoverEnd;
     public UnityEvent OnInteract;
     private Outline outline;
@@ -52,6 +56,12 @@ public class Interactable : MonoBehaviour
     public virtual void HoverUpdate() {}
     public virtual void Interact(GameObject player) 
     {
-        OnInteract?.Invoke(); // NEW: This tells the Unity Inspector to fire its events!
+        // --- NEW: Play the base interaction sound if assigned ---
+        if (interactAudioSource != null && interactSound != null)
+        {
+            interactAudioSource.PlayOneShot(interactSound);
+        }
+
+        OnInteract?.Invoke(); 
     }
 }

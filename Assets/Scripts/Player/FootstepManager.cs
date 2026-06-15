@@ -1,44 +1,69 @@
 using System;
 using System.Collections;
 using UnityEngine;
+using Unity.Netcode; 
 using Random = UnityEngine.Random;
 
-public class FootstepManager : MonoBehaviour
+public class FootstepManager : NetworkBehaviour 
 {
     public float rayDistance = 2f; 
     public LayerMask groundLayer;
 
     [Header("Timings")]
     public float walkTime = 0.5f;
-    public float sprintTime = 0.3f; // Faster footstep loop when running
+    public float sprintTime = 0.3f; 
     private float currentStepInterval;
 
     [Header("Audio Sources")]
     public AudioSource leftFootSrc, rightFootSrc;
     
-    // Event to broadcast when a step actually happens
     public event Action OnStep;
 
-    #region Clips
+    // Network Variables - Owner writes, everyone reads. Updates instantly for the owner!
+    public NetworkVariable<bool> isMovingNet = new NetworkVariable<bool>(false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
+    public NetworkVariable<bool> isSprintingNet = new NetworkVariable<bool>(false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
 
-    [Header("Clips"), SerializeField]
-    FloorSounds[] floorTypes;
-
-    #endregion
+    [Header("Clips")]
+    [SerializeField] private FloorSounds[] floorTypes;
     
-    #region State
-
-    FloorType currentFloor = FloorType.Tile;
+    private FloorType currentFloor = FloorType.Tile;
     private bool stepRight = false;
-    private bool playFootsteps = false;
-    private bool isSprinting = false;
+    private Coroutine footstepCoroutine;
 
-    #endregion
-
-    private void Start()
+    public override void OnNetworkSpawn()
     {
-        currentStepInterval = walkTime;
-        StartCoroutine(FootstepLoop());
+        isSprintingNet.OnValueChanged += HandleSprintStateChanged;
+        
+        // ====================================================================
+        // THE LOCAL AUDIO FIX:
+        // Forces local player footsteps to be 2D (0.0) so they don't get 
+        // phased out by the camera. Remote players stay 3D (1.0) for panning.
+        // ====================================================================
+        if (leftFootSrc != null) leftFootSrc.spatialBlend = IsOwner ? 0f : 1f;
+        if (rightFootSrc != null) rightFootSrc.spatialBlend = IsOwner ? 0f : 1f;
+
+        UpdateLocalInterval();
+        footstepCoroutine = StartCoroutine(FootstepLoop());
+    }
+
+    public override void OnNetworkDespawn()
+    {
+        isSprintingNet.OnValueChanged -= HandleSprintStateChanged;
+        
+        if (footstepCoroutine != null)
+        {
+            StopCoroutine(footstepCoroutine);
+        }
+    }
+
+    private void HandleSprintStateChanged(bool oldVal, bool newVal)
+    {
+        UpdateLocalInterval();
+    }
+
+    private void UpdateLocalInterval()
+    {
+        currentStepInterval = isSprintingNet.Value ? sprintTime : walkTime;
     }
 
     void Update()
@@ -48,17 +73,13 @@ public class FootstepManager : MonoBehaviour
 
     void CheckForFloorTypes()
     {
-        Vector3 rayOffset = new Vector3(0, 0.25f); 
+        Vector3 rayOffset = new Vector3(0, 0.25f, 0); 
+        
+        // CRITICAL CHECK: Make sure your 'groundLayer' dropdown in the Inspector 
+        // does NOT include your Player's layer, otherwise you'll raycast hit yourself!
         if (Physics.Raycast(transform.position + rayOffset, Vector3.down, out RaycastHit hit, rayDistance, groundLayer))
         {
-            if (hit.transform.TryGetComponent(out SetFloorType floor))
-            {
-                SetFloor(floor.floorToSet);
-            }
-            else
-            {
-                SetFloor(FloorType.Grass);
-            }
+            SetFloor(hit.transform.TryGetComponent(out SetFloorType floor) ? floor.floorToSet : FloorType.Grass);
         }
     }
 
@@ -68,10 +89,7 @@ public class FootstepManager : MonoBehaviour
     {
         foreach (FloorSounds f in floorTypes)
         {
-            if (f.type == floorType) 
-            {
-                return f;
-            }
+            if (f.type == floorType) return f;
         }
         return null;
     } 
@@ -80,50 +98,56 @@ public class FootstepManager : MonoBehaviour
     {
         while (true)
         {
-            if (playFootsteps)
-            {                
-                AudioSource audioSource = stepRight ? rightFootSrc : leftFootSrc;
-                FloorSounds currentSounds = GetFloorSounds(currentFloor);
+            // Direct, unified check of the state variable
+            yield return new WaitUntil(() => isMovingNet.Value);
 
-                if (currentSounds != null)
+            AudioSource audioSource = stepRight ? rightFootSrc : leftFootSrc;
+            FloorSounds currentSounds = GetFloorSounds(currentFloor);
+
+            if (currentSounds != null && audioSource != null)
+            {
+                AudioClip clip = currentSounds.GetRandomStepClip();
+                if (clip != null)
                 {
-                    AudioClip clip = currentSounds.GetRandomStepClip();
-                    if (clip != null)
-                    {
-                        audioSource.PlayOneShot(clip);
-                        
-                        // Fire the event perfectly synced with the audio
-                        OnStep?.Invoke();
-                    }
+                    audioSource.PlayOneShot(clip);
+                    OnStep?.Invoke();
                 }
             }
             
-            // Wait for the dynamic step interval
-            yield return new WaitForSeconds(currentStepInterval);
-
-            // Switch Feet
             stepRight = !stepRight;
+
+            yield return new WaitForSeconds(currentStepInterval);
         }
     }
 
+    // ==========================================
+    // SYNC METHODS (Called by your movement script)
+    // ==========================================
+
     public void SetFootsteps(bool setEnabled) 
     {
-        playFootsteps = setEnabled;
+        if (IsOwner) 
+        {
+            isMovingNet.Value = setEnabled;
+        }
     }
 
     public void SetSprintState(bool sprinting)
     {
-        isSprinting = sprinting;
-        // Smoothly adjust the delay between footsteps based on state
-        currentStepInterval = isSprinting ? sprintTime : walkTime;
+        if (IsOwner) 
+        {
+            isSprintingNet.Value = sprinting;
+            UpdateLocalInterval(); 
+        }
     }
 }
 
+// ==========================================
+// DATA STRUCTURES
+// ==========================================
+
 [Serializable]
-public enum FloorType
-{
-    Grass, Gravel, Metal, Rock, Tile, Water, Wood
-}
+public enum FloorType { Grass, Gravel, Metal, Rock, Tile, Water, Wood }
 
 [Serializable]
 public class FloorSounds

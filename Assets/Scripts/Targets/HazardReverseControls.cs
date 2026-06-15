@@ -1,18 +1,26 @@
-// --- ReverseControlsTarget.cs ---
-// Attach to your Penalty Prefab
+using Unity.Netcode;
+using UnityEngine;
+
 public class HazardReverseControls : CarnivalTarget
 {
+    [Header("Hazard Settings")]
+    [Tooltip("How many seconds the opponent's mouse is inverted.")]
+    public float effectDuration = 5f;
+
     protected override void ApplySpecialEffect(ulong shooterClientId)
     {
-        // Removed .Singleton
-        foreach (var client in NetworkManager.ConnectedClientsList)
+        NetworkBalloonShooter[] allShooters = FindObjectsByType<NetworkBalloonShooter>(FindObjectsSortMode.None);
+        
+        foreach (var shooter in allShooters)
         {
-            if (client.ClientId != shooterClientId)
+            if (shooter.OwnerClientId != shooterClientId)
             {
-                if (client.PlayerObject.TryGetComponent(out PlayerState opponentState))
+                ClientRpcParams rpcParams = new ClientRpcParams
                 {
-                    opponentState.ActivateReverseControls(5f); // 5 seconds of reversed controls
-                }
+                    Send = new ClientRpcSendParams { TargetClientIds = new ulong[] { shooter.OwnerClientId } }
+                };
+                
+                shooter.ApplyBrainScrambleClientRpc(effectDuration, rpcParams);
             }
         }
     }
